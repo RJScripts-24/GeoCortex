@@ -4,6 +4,14 @@ import { TileLayer } from '@deck.gl/geo-layers';
 import { BitmapLayer } from '@deck.gl/layers';
 import { useGlobalStore } from '../context/GlobalStore';
 import { fetchHeatLayer, fetchAnalysis } from '../services/api';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
+
+// Set the API key and other options for the loader once, outside the component.
+setOptions({
+  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+  version: "beta",
+  libraries: ["marker"],
+});
 
 const MapViewer = () => {
   const mapRef = useRef(null);
@@ -12,45 +20,50 @@ const MapViewer = () => {
   const { year, activeLayer, gesture, setAnalysis, setIsAnalyzing } = useGlobalStore();
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    const initMap = async () => {
+      // Dynamically load the 'maps' library
+      const { Map } = await importLibrary("maps");
 
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 12.9716, lng: 77.5946 },
-      zoom: 13,
-      tilt: 67.5,
-      heading: 45,
-      mapId: '15431d2b4ce52a73',
-      disableDefaultUI: true,
-      backgroundColor: '#000000',
-    });
+      const map = new Map(mapRef.current, {
+        center: { lat: 12.9716, lng: 77.5946 },
+        zoom: 13,
+        tilt: 67.5,
+        heading: 45,
+        mapId: '15431d2b4ce52a73',
+        disableDefaultUI: true,
+        backgroundColor: '#000000',
+      });
 
-    mapInstance.current = map;
+      mapInstance.current = map;
 
-    const overlay = new GoogleMapsOverlay({
-      layers: [],
-    });
+      const overlay = new GoogleMapsOverlay({
+        layers: [],
+      });
 
-    overlay.setMap(map);
-    overlayRef.current = overlay;
+      overlay.setMap(map);
+      overlayRef.current = overlay;
 
-    map.addListener('click', async (e) => {
-      if (!e.latLng) return;
-      
-      const lat = e.latLng.lat();
-      const lng = e.latLng.lng();
+      map.addListener('click', async (e) => {
+        if (!e.latLng) return;
+        
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
 
-      setIsAnalyzing(true);
-      try {
-        const result = await fetchAnalysis(lat, lng);
-        setAnalysis(result.analysis);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setIsAnalyzing(false);
-      }
-    });
+        setIsAnalyzing(true);
+        try {
+          const result = await fetchAnalysis(lat, lng);
+          setAnalysis(result.analysis);
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsAnalyzing(false);
+        }
+      });
+    };
 
-  }, [setAnalysis, setIsAnalyzing]);
+    initMap();
+
+  }, []); // Empty dependency array ensures this only runs once
 
   useEffect(() => {
     const updateLayers = async () => {

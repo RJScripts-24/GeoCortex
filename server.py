@@ -65,7 +65,7 @@ def analyze_location():
         lat = data.get('lat')
         lng = data.get('lng')
         
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        client = genai.Client(api_key=os.getenv("AIzaSyC6V4mJQ9lANXKW0GVdgSxW0EZ10wqftiw"))
         prompt = f"Act as a civil engineer. Analyze coordinates {lat}, {lng}. Suggest 3 distinct mitigation strategies for urban heat islands in this specific location."
         
         response = client.models.generate_content(
