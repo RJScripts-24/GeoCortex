@@ -1,7 +1,7 @@
 import os
 import json
 import ee
-import google.generativeai as genai
+from groq import Groq
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -120,18 +120,56 @@ def analyze_location():
         data = request.json
         lat = data.get('lat')
         lng = data.get('lng')
+
+        temperature_c = None
+        try:
+            # Get temperature from Earth Engine for the given point
+            point = ee.Geometry.Point([lng, lat])
+            # Get latest available MODIS LST data
+            image = ee.ImageCollection('MODIS/061/MOD11A2') \
+                .filterBounds(point) \
+                .select('LST_Day_1km') \
+                .sort('system:time_start', False) \
+                .first()
+            
+            # MODIS LST scale factor is 0.02 (multiply by 0.02 to get Kelvin)
+            lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
+            if lst_value is not None and lst_value > 0:
+                temperature_k = lst_value * 0.02
+                temperature_c = temperature_k - 273.15
+                print(f"LST raw value: {lst_value}, Kelvin: {temperature_k}, Celsius: {temperature_c}")
+        except Exception as ee_error:
+            print(f"Earth Engine error: {ee_error}")
+
+        # Use Groq API key
+        api_key = os.getenv("GROQ_API_KEY") or "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"
+        client = Groq(api_key=api_key)
         
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        # Enhanced prompt with location details
+        prompt = f"""Analyze the urban heat island effect at the coordinates {lat}, {lng}.
+
+    Please provide:
+    1. The exact location name (city/area)
+    2. Current temperature analysis (Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C)
+    3. What is causing heat in this region (urban factors, land use, etc.)
+    4. Three specific actionable ways to reduce heat in this region
+
+    Keep the response concise and specific to this location."""
         
-        model = genai.GenerativeModel('gemini-pro')
-        
-        prompt = f"Analyze the urban heat island effect at latitude {lat} and longitude {lng}. Provide a concise analysis of the area's vulnerability and suggest three actionable mitigation strategies."
-        
-        response = model.generate_content(prompt)
-        
-        return jsonify({'analysis': response.text})
-        
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+        )
+
+        return jsonify({
+            'analysis': response.choices[0].message.content,
+            'temperature': round(temperature_c, 2) if temperature_c is not None else None,
+            'coordinates': {'lat': lat, 'lng': lng}
+        })
     except Exception as e:
+        print(f"Error in analyze_location: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/')

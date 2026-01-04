@@ -8,6 +8,7 @@ export const GlobalProvider = ({ children }) => {
   const [gesture, setGesture] = useState('None');
   const [analysis, setAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showConsultant, setShowConsultant] = useState(false);
 
   return (
     <GlobalContext.Provider value={{
@@ -20,7 +21,9 @@ export const GlobalProvider = ({ children }) => {
       analysis,
       setAnalysis,
       isAnalyzing,
-      setIsAnalyzing
+      setIsAnalyzing,
+      showConsultant,
+      setShowConsultant
     }}>
       {children}
     </GlobalContext.Provider>

@@ -3,12 +3,13 @@ import { useGlobalStore } from '../context/GlobalStore';
 import { generatePDF } from '../utils/pdfGenerator';
 
 const Sidebar = () => {
-  const { analysis, isAnalyzing } = useGlobalStore();
+  const { analysis, isAnalyzing, showConsultant, setShowConsultant } = useGlobalStore();
 
   const handleDownload = () => {
     generatePDF(analysis);
   };
 
+  if (!showConsultant) return null;
   return (
     <div 
       id="sidebar-panel"
@@ -19,6 +20,10 @@ const Sidebar = () => {
         <h2 className="text-xl font-mono tracking-widest text-cyan-400">
           AI CONSULTANT
         </h2>
+        <button
+          className="ml-auto px-2 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded"
+          onClick={() => setShowConsultant(false)}
+        >Close</button>
       </div>
 
       <div className="min-h-[200px]">
@@ -31,11 +36,14 @@ const Sidebar = () => {
           </div>
         ) : analysis ? (
           <div className="space-y-4">
-            <div className="prose prose-invert prose-sm">
-              <p className="whitespace-pre-wrap font-sans text-gray-300 leading-relaxed">
-                {analysis}
-              </p>
-            </div>
+            <div 
+              style={{
+                color: '#d1d5db',
+                fontSize: '1rem',
+                lineHeight: '1.6'
+              }}
+              dangerouslySetInnerHTML={{ __html: analysis }} 
+            />
             
             <div className="pt-4 border-t border-white/10 mt-4">
               <button
