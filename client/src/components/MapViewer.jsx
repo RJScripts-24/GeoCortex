@@ -1,130 +1,59 @@
-import React, { useEffect, useRef } from 'react';
-import { GoogleMapsOverlay } from '@deck.gl/google-maps';
-import { TileLayer } from '@deck.gl/geo-layers';
-import { BitmapLayer } from '@deck.gl/layers';
-import { useGlobalStore } from '../context/GlobalStore';
-import { fetchHeatLayer, fetchAnalysis } from '../services/api';
-import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
-
-// Set the API key and other options for the loader once, outside the component.
-setOptions({
-  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-  version: "beta",
-  libraries: ["marker"],
-});
+import React, { useEffect, useRef } from "react";
+import { GoogleMapsOverlay } from "@deck.gl/google-maps";
+import { BitmapLayer } from "@deck.gl/layers";
 
 const MapViewer = () => {
   const mapRef = useRef(null);
-  const mapInstance = useRef(null);
   const overlayRef = useRef(null);
-  const { year, activeLayer, gesture, setAnalysis, setIsAnalyzing } = useGlobalStore();
 
   useEffect(() => {
-    const initMap = async () => {
-      // Dynamically load the 'maps' library
-      const { Map } = await importLibrary("maps");
+    if (!window.google || !mapRef.current) return;
 
-      const map = new Map(mapRef.current, {
-        center: { lat: 12.9716, lng: 77.5946 },
-        zoom: 13,
-        tilt: 67.5,
-        heading: 45,
-        mapId: '15431d2b4ce52a73',
-        disableDefaultUI: true,
-        backgroundColor: '#000000',
-      });
+    
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: 12.9716, lng: 77.5946 },
+      zoom: 17,              
+      tilt: 67,              
+      heading: 0,
+      mapId: "3e9ab3019d1723b1f60010f9", 
+      disableDefaultUI: true,
+    });
 
-      mapInstance.current = map;
+    
+    const overlay = new GoogleMapsOverlay({
+      layers: [],
+    });
 
-      const overlay = new GoogleMapsOverlay({
-        layers: [],
-      });
+    overlay.setMap(map);
+    overlayRef.current = overlay;
 
-      overlay.setMap(map);
-      overlayRef.current = overlay;
+    
+    const heatLayer = new BitmapLayer({
+      id: "bengaluru-heat",
+      image: "/bengaluru_heat.png", 
+      bounds: [77.45, 12.85, 77.75, 13.15],
+      opacity: 1,
+    });
 
-      map.addListener('click', async (e) => {
-        if (!e.latLng) return;
-        
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
+    overlay.setProps({
+      layers: [heatLayer],
+    });
 
-        setIsAnalyzing(true);
-        try {
-          const result = await fetchAnalysis(lat, lng);
-          setAnalysis(result.analysis);
-        } catch (error) {
-          console.error(error);
-        } finally {
-          setIsAnalyzing(false);
-        }
-      });
-    };
+    console.log("✅ 3D Map + Heatmap initialized");
 
-    initMap();
-
-  }, []); // Empty dependency array ensures this only runs once
-
-  useEffect(() => {
-    const updateLayers = async () => {
-      if (!overlayRef.current) return;
-
-      let layers = [];
-
-      if (activeLayer === 'heat') {
-        try {
-          const data = await fetchHeatLayer(year);
-          if (data && data.tileUrl) {
-            const heatLayer = new TileLayer({
-              id: 'heat-layer',
-              data: data.tileUrl,
-              minZoom: 0,
-              maxZoom: 19,
-              tileSize: 256,
-              renderSubLayers: props => {
-                const { bbox: { west, south, east, north } } = props.tile;
-                return new BitmapLayer(props, {
-                  data: null,
-                  image: props.data,
-                  bounds: [west, south, east, north]
-                });
-              },
-              opacity: 0.6
-            });
-            layers.push(heatLayer);
-          }
-        } catch (error) {
-          console.error(error);
-        }
-      }
-
-      overlayRef.current.setProps({ layers });
-    };
-
-    updateLayers();
-  }, [year, activeLayer]);
-
-  useEffect(() => {
-    if (!mapInstance.current) return;
-
-    let interval;
-    const step = 0.05;
-
-    if (gesture === 'Closed_Fist') {
-      interval = setInterval(() => {
-        mapInstance.current.setZoom(mapInstance.current.getZoom() + step);
-      }, 50);
-    } else if (gesture === 'Pointing_Up') {
-      mapInstance.current.setZoom(13);
-      mapInstance.current.setTilt(45);
-      mapInstance.current.setCenter({ lat: 12.9716, lng: 77.5946 });
-    }
-
-    return () => clearInterval(interval);
-  }, [gesture]);
+  }, []);
 
   return (
-    <div ref={mapRef} className="absolute inset-0 w-full h-full bg-black" />
+    <div
+      ref={mapRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "black",
+      }}
+    />
   );
 };
 

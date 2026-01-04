@@ -2,81 +2,80 @@ import os
 import json
 import ee
 from google import genai
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = Flask(__name__)
-CORS(app)
+app = Flask(__name__, static_folder='client/dist', static_url_path='')
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-service_account_file = 'credentials.json'
-
+# Initialize Earth Engine
 try:
-    with open(service_account_file) as f:
-        creds_data = json.load(f)
-        service_account_email = creds_data['client_email']
-
-    credentials = ee.ServiceAccountCredentials(
-        email=service_account_email,
-        key_file=service_account_file
+    creds = ee.ServiceAccountCredentials(
+        os.getenv('EE_ACCOUNT'),
+        key_data=os.getenv('EE_PRIVATE_KEY')
     )
-    ee.Initialize(credentials)
-except Exception:
-    pass
+    ee.Initialize(creds)
+except Exception as e:
+    print(f"Earth Engine initialization failed: {e}")
 
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'online'})
 
-@app.route('/get-heat-layer', methods=['POST'])
-def get_heat_layer():
+@app.route('/api/heat/<int:year>')
+def get_heat_layer(year):
     try:
-        data = request.json
-        year = data.get('year', 2024)
-        
-        dataset = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2') \
-            .filterDate(f'{year}-01-01', f'{year}-12-31') \
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)) \
-            .median()
+        image = ee.ImageCollection('MODIS/061/MOD11A2') \
+            .filter(ee.Filter.date(f'{year}-01-01', f'{year}-12-31')) \
+            .select('LST_Day_1km') \
+            .mean()
 
-        thermal = dataset.select('ST_B10').multiply(0.00341802).add(149.0).subtract(273.15)
-        
         vis_params = {
-            'min': 20,
-            'max': 50,
-            'palette': ['blue', 'yellow', 'orange', 'red']
+            'min': 13000.0,
+            'max': 16500.0,
+            'palette': [
+                "040274", "040281", "0502a3", "0502b8", "0502ce", "0502e6",
+                "0602ff", "235cb1", "307ef3", "269db1", "30c8e2", "32d3ef",
+                "3be285", "3ff38f", "86e26f", "3ae237", "b5e22e", "d6e21f",
+                "fff705", "ffd611", "ffb613", "ff8b13", "ff6e08", "ff500d",
+                "ff0000", "de0101", "c21301", "a71001", "911001"
+            ]
         }
         
-        map_id = thermal.getMapId(vis_params)
-        
-        return jsonify({
-            'tileUrl': map_id['tile_fetcher'].url_format
-        })
+        map_id = image.getMapId(vis_params)
+        tile_url = map_id['tile_fetcher'].url_format
+
+        return jsonify({'tileUrl': tile_url})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/api/analyze', methods=['POST'])
 def analyze_location():
     try:
         data = request.json
         lat = data.get('lat')
         lng = data.get('lng')
         
-        client = genai.Client(api_key=os.getenv("AIzaSyC6V4mJQ9lANXKW0GVdgSxW0EZ10wqftiw"))
-        prompt = f"Act as a civil engineer. Analyze coordinates {lat}, {lng}. Suggest 3 distinct mitigation strategies for urban heat islands in this specific location."
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
         
-        response = client.models.generate_content(
-            model="gemini-1.5-pro",
-            contents=prompt
-        )
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"Analyze the urban heat island effect at latitude {lat} and longitude {lng}. Provide a concise analysis of the area's vulnerability and suggest three actionable mitigation strategies."
+        
+        response = model.generate_content(prompt)
         
         return jsonify({'analysis': response.text})
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/')
+def serve():
+    return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

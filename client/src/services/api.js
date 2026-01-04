@@ -1,23 +1,21 @@
-const API_BASE_URL = 'http://127.0.0.1:5000';
 
 export const fetchHeatLayer = async (year) => {
-  const response = await fetch(`${API_BASE_URL}/get-heat-layer`, {
-    method: 'POST',
+  const response = await fetch(`/api/heat/${year}`, {
+    method: 'GET',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ year }),
   });
-  
+
   if (!response.ok) {
     throw new Error('Network response was not ok');
   }
-  
+
   return response.json();
 };
 
 export const fetchAnalysis = async (lat, lng) => {
-  const response = await fetch(`${API_BASE_URL}/analyze`, {
+  const response = await fetch(`/api/analyze`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
