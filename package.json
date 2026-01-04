@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@deck.gl/geo-layers": "^9.2.5",
     "@googlemaps/js-api-loader": "^2.0.2"
   }
 }

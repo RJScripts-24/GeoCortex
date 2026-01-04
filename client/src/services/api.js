@@ -1,4 +1,5 @@
 
+
 export const fetchHeatLayer = async (year) => {
   const response = await fetch(`/api/heat/${year}`, {
     method: 'GET',
@@ -13,6 +14,7 @@ export const fetchHeatLayer = async (year) => {
 
   return response.json();
 };
+
 
 export const fetchAnalysis = async (lat, lng) => {
   const response = await fetch(`/api/analyze`, {
