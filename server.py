@@ -141,8 +141,10 @@ def analyze_location():
         except Exception as ee_error:
             print(f"Earth Engine error: {ee_error}")
 
-        # Use Groq API key
-        api_key = os.getenv("GROQ_API_KEY") or "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"
+        # Use Groq API key from environment only
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY is not set in the environment. Please add it to your .env file.")
         client = Groq(api_key=api_key)
         
         # Enhanced prompt with location details
