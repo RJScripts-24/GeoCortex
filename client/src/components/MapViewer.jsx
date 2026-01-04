@@ -17,8 +17,9 @@ const MapViewer = () => {
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 12.9716, lng: 77.5946 },
       zoom: 13,
-      tilt: 45,
-      mapId: 'DEMO_MAP_ID', 
+      tilt: 67.5,
+      heading: 45,
+      mapId: '15431d2b4ce52a73',
       disableDefaultUI: true,
       backgroundColor: '#000000',
     });

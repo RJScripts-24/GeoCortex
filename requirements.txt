@@ -8,7 +8,6 @@ click==8.3.1
 earthengine-api==1.7.4
 Flask==3.1.2
 flask-cors==6.0.2
-google-ai-generativelanguage==0.6.15
 google-api-core==2.28.1
 google-api-python-client==2.187.0
 google-auth==2.45.0
@@ -16,7 +15,6 @@ google-auth-httplib2==0.3.0
 google-cloud-core==2.5.0
 google-cloud-storage==3.7.0
 google-crc32c==1.8.0
-google-generativeai==0.8.6
 google-resumable-media==2.8.0
 googleapis-common-protos==1.72.0
 grpcio==1.76.0
@@ -42,3 +40,5 @@ typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.6.2
 Werkzeug==3.1.4
+google-generativeai
+python-dotenv

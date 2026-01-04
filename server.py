@@ -1,22 +1,15 @@
 import os
 import json
 import ee
-import google.generativeai as genai
+from google import genai
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
-
-def load_env_file():
-    if os.path.exists('.env'):
-        with open('.env') as f:
-            for line in f:
-                if '=' in line:
-                    key, value = line.strip().split('=', 1)
-                    os.environ[key] = value
-
-load_env_file()
 
 service_account_file = 'credentials.json'
 
@@ -32,8 +25,6 @@ try:
     ee.Initialize(credentials)
 except Exception:
     pass
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -74,10 +65,13 @@ def analyze_location():
         lat = data.get('lat')
         lng = data.get('lng')
         
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         prompt = f"Act as a civil engineer. Analyze coordinates {lat}, {lng}. Suggest 3 distinct mitigation strategies for urban heat islands in this specific location."
         
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-pro",
+            contents=prompt
+        )
         
         return jsonify({'analysis': response.text})
         
