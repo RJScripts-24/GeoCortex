@@ -7,10 +7,10 @@ export const GlobalProvider = ({ children }) => {
   const [activeLayer, setActiveLayer] = useState("none");
   const [gesture, setGesture] = useState("None");
 
-  // 🔹 AI Analysis (HTML → UI display)
+  // AI Analysis (HTML → UI display)
   const [analysis, setAnalysis] = useState(null);
 
-  // 🔹 Structured AI Analysis (JSON → PDF generation)
+  //  Structured AI Analysis (JSON → PDF generation)
   const [structuredAnalysis, setStructuredAnalysis] = useState(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -38,7 +38,7 @@ export const GlobalProvider = ({ children }) => {
         analysis,
         setAnalysis,
 
-        // ✅ Structured (PDF-safe)
+        //  Structured (PDF-safe)
         structuredAnalysis,
         setStructuredAnalysis,
 

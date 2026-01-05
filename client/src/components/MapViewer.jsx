@@ -20,7 +20,7 @@ const MapViewer = ({ moveTo }) => {
     year,
     setShowConsultant,
     setAnalysis,                // UI HTML
-    setStructuredAnalysis,      // ✅ PDF JSON
+    setStructuredAnalysis,      //  PDF JSON
     setIsAnalyzing,
     setClickedLocation,
     setMapImage,
@@ -89,11 +89,11 @@ const MapViewer = ({ moveTo }) => {
         renderSubLayers: (props) => {
   const { west, south, east, north } = props.tile.bbox;
 
-  return new BitmapLayer({
-    id: `heatmap-${props.tile.x}-${props.tile.y}-${props.tile.z}`,
+   return new BitmapLayer({
+    ...props,                  
     image: props.data,
     bounds: [west, south, east, north],
-    data: [0],          // ✅ THIS IS THE FIX
+    data: [0],                    
     opacity: 0.8,
   });
 },
@@ -136,10 +136,10 @@ const MapViewer = ({ moveTo }) => {
       if (res.ok) {
         const data = await res.json();
 
-        // ✅ UI HTML
+        //  UI HTML
         setAnalysis(data.analysis || "");
 
-        // ✅ STRUCTURED JSON FOR PDF
+        //  STRUCTURED JSON FOR PDF
         if (data.structured_analysis) {
           setStructuredAnalysis(data.structured_analysis);
         }
