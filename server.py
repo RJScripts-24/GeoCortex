@@ -170,196 +170,156 @@ def analyze_location():
         lat = data.get('lat')
         lng = data.get('lng')
 
-        # Get actual location name using reverse geocoding
+        # ------------------ Reverse Geocoding ------------------
         location_name = "Unknown Location"
         try:
             geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-            geocode_headers = {'User-Agent': 'GeoCortex/1.0'}
-            geocode_response = requests.get(geocode_url, headers=geocode_headers, timeout=5)
-            if geocode_response.ok:
-                geocode_data = geocode_response.json()
-                address = geocode_data.get('address', {})
-                # Build location name from address components
-                parts = []
-                if 'neighbourhood' in address:
-                    parts.append(address['neighbourhood'])
-                elif 'suburb' in address:
-                    parts.append(address['suburb'])
-                elif 'road' in address:
-                    parts.append(address['road'])
-                if 'city' in address:
-                    parts.append(address['city'])
-                elif 'town' in address:
-                    parts.append(address['town'])
-                if 'state' in address:
-                    parts.append(address['state'])
-                location_name = ', '.join(parts) if parts else geocode_data.get('display_name', 'Unknown Location')
-                print(f"Reverse geocoded location: {location_name}")
-        except Exception as geo_error:
-            print(f"Geocoding error: {geo_error}")
+            headers = {'User-Agent': 'GeoCortex/1.0'}
+            r = requests.get(geocode_url, headers=headers, timeout=5)
+            if r.ok:
+                g = r.json()
+                addr = g.get('address', {})
+                parts = [addr[k] for k in ['neighbourhood','suburb','road','city','town','state'] if k in addr]
+                location_name = ', '.join(parts) if parts else g.get('display_name', location_name)
+        except Exception:
+            pass
 
+        # ------------------ Temperature ------------------
         temperature_c = None
         try:
-            # Get temperature from Earth Engine for the given point
             point = ee.Geometry.Point([lng, lat])
-            
-            # Get the same image collection used for visualization
             image = ee.ImageCollection('MODIS/061/MOD11A2') \
-                .filter(ee.Filter.date(f'{data.get("year", 2025)}-01-01', f'{data.get("year", 2025)}-12-31')) \
+                .filter(ee.Filter.date('2025-01-01', '2025-12-31')) \
                 .select('LST_Day_1km') \
                 .mean()
-            
-            # Sample temperature at the clicked point
-            lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
-            
-            if lst_value is not None and lst_value > 0:
-                # Convert to Celsius (MODIS LST scale factor is 0.02)
-                temperature_k = lst_value * 0.02
-                temperature_c = temperature_k - 273.15
-                
-                print(f"LST raw value: {lst_value}, Kelvin: {temperature_k}, Celsius: {temperature_c}")
-        except Exception as ee_error:
-            print(f"Earth Engine error: {ee_error}")
+            lst = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
+            if lst is not None:
+                temperature_c = (lst * 0.02) - 273.15
+        except Exception:
+            pass
 
-        # Use Groq API key from environment only
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise RuntimeError("GROQ_API_KEY is not set in the environment. Please add it to your .env file.")
-        client = Groq(api_key=api_key)
-        
-        # Zone classification based on ACTUAL TEMPERATURE
-        # Updated thresholds to match the visual heat map color gradient
-        zone = None
-        zone_info = None
-        temp_c = temperature_c if temperature_c is not None else None
-        
-        if temp_c is not None:
-            if temp_c < 26:  # Cool - water bodies, deep shade, well-vegetated areas (Blue: 20-26°C)
-                zone = 1
-                zone_info = {
-                    "name": "Blue Zone (Cool Areas)",
-                    "status": "✅ Healthy / Protected",
-                    "color": "#0502ff",
-                    "suggestions": [
-                        "Preservation: Maintain the current state of this area.",
-                        "Monitor Water Quality (if water body present).",
-                        "Prevent Encroachment (no new construction).",
-                        "Biodiversity Check (high ecological value)."
-                    ]
-                }
-            elif temp_c < 27.5:  # Comfortable - well-shaded urban areas (Cyan: 26-27.5°C)
-                zone = 2
-                zone_info = {
-                    "name": "Cyan Zone (Comfortable Urban Areas)",
-                    "status": "🟢 Stable",
-                    "color": "#30c8e2",
-                    "suggestions": [
-                        "Maintain Green Cover (protect existing trees).",
-                        "Rainwater Harvesting (groundwater recharge)."
-                    ]
-                }
-            elif temp_c < 28.7:  # Warming - transition areas with sparse vegetation (Green: 27.5-28.7°C)
-                zone = 3
-                zone_info = {
-                    "name": "Green Zone (Transition Areas)",
-                    "status": "⚠️ At Risk",
-                    "color": "#3ae237",
-                    "suggestions": [
-                        "Canopy Upgrade (plant tall trees, not just grass).",
-                        "Soil Moisture Retention (mulching, prevent drying)."
-                    ]
-                }
-            elif temp_c < 29.5:  # Hot - roads, dense residential, parking lots (Yellow/Orange: 28.7-29.5°C)
-                zone = 4
-                zone_info = {
-                    "name": "Yellow/Orange Zone (Warning Zone)",
-                    "status": "🟠 Mitigation Required",
-                    "color": "#ff8b13",
-                    "suggestions": [
-                        "Street Avenue Planting (trees along roads).",
-                        "Cool Pavements (replace asphalt with permeable pavers).",
-                        "Vertical Gardens (green walls on pillars/fences)."
-                    ]
-                }
-            else:  # Extreme heat - industrial, large roofs, highways (Red: >29.5°C)
-                zone = 5
-                zone_info = {
-                    "name": "Red Zone (Critical Heat Island)",
-                    "status": "🚨 CRITICAL INTERVENTION",
-                    "color": "#ff0000",
-                    "suggestions": [
-                        "Priority 1: Cool Roofing (paint black roofs white).",
-                        "Priority 2: Miyawaki Forest (ultra-dense forest buffer if possible).",
-                        "Priority 3: Mist Cooling Systems (for plazas where trees can't grow)."
-                    ]
-                }
-        # Enhanced prompt with actual location name and zone suggestions
-        prompt = (
-            f"Analyze the urban heat island effect at {location_name} (coordinates: {lat}, {lng}).\n\n"
-            f"Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C\n"
-            + (
-                f"\nGeoCortex Zone: {zone_info['name']}\nStatus: {zone_info['status']}\nAI Suggestions for this zone:\n- "
-                + "\n- ".join(zone_info['suggestions']) + "\n" if zone_info else ""
-            )
-            + "\nPlease provide:\n"
-            "1. Current temperature analysis.\n"
-            "2. What is causing heat in this region (urban factors, land use, etc.).\n"
-            "3. Three specific actionable ways to reduce heat in this region.\n\n"
-            "Keep the response concise and specific to this location."
-        )
-        
-        response = client.chat.completions.create(
+        # ------------------ Zone Logic ------------------
+        zone_name, zone_status = "Unknown", "Unknown"
+        if temperature_c is not None:
+            if temperature_c < 26:
+                zone_name, zone_status = "Blue Zone (Cool Areas)", "Healthy / Protected"
+            elif temperature_c < 27.5:
+                zone_name, zone_status = "Cyan Zone (Comfortable Urban Areas)", "Stable"
+            elif temperature_c < 28.7:
+                zone_name, zone_status = "Green Zone (Transition Areas)", "At Risk"
+            elif temperature_c < 29.5:
+                zone_name, zone_status = "Yellow/Orange Zone (Warning Zone)", "Mitigation Required"
+            else:
+                zone_name, zone_status = "Red Zone (Critical Heat Island)", "CRITICAL INTERVENTION"
+
+        # ------------------ PROMPT (CORRECT) ------------------
+        prompt = f"""
+You are an environmental assessment system.
+
+Analyze the Urban Heat Island effect for the location below and FILL ALL FIELDS.
+
+Location: {location_name}
+Coordinates: {lat}, {lng}
+Land Surface Temperature: {round(temperature_c,2) if temperature_c is not None else "N/A"} °C
+Zone: {zone_name}
+Status: {zone_status}
+
+Return ONLY valid JSON matching this schema:
+
+{{
+  "title": "Urban Heat Island Assessment",
+  "location": {{
+    "name": "{location_name}",
+    "coordinates": "{lat}, {lng}"
+  }},
+  "temperature": {{
+    "value": {round(temperature_c,2) if temperature_c is not None else 0},
+    "unit": "°C",
+    "classification": "{zone_name}"
+  }},
+  "zone": "{zone_name}",
+  "status": "{zone_status}",
+  "analysis": {{
+    "summary": "2–3 concise sentences",
+    "causes": ["cause 1", "cause 2", "cause 3"],
+    "actions": ["action 1", "action 2", "action 3"]
+  }}
+}}
+
+Rules:
+- Use plain ASCII text only
+- Causes must be urban / land-use related
+- Actions must be actionable and location-specific
+"""
+
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        res = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
         )
 
-        # Format AI Insights with emojis, font sizes, and bold for frontend display
-        # Format AI content: bold, emojis, spacing
-        import re
-        ai_content = response.choices[0].message.content
-        # Convert markdown bold to HTML bold
-        ai_content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', ai_content)
-        # Add spacing after numbered points
-        ai_content = re.sub(r'(\d+\.)', r'<br><span style="font-size:1.1rem;font-weight:bold;">\1</span>', ai_content)
-        # Add emoji for each section if not present
-        ai_content = re.sub(r'1\.', '1️⃣.', ai_content)
-        ai_content = re.sub(r'2\.', '2️⃣.', ai_content)
-        ai_content = re.sub(r'3\.', '3️⃣.', ai_content)
-        # Add extra spacing between sections
-        ai_content = ai_content.replace('<br><span', '<br><br><span')
-        # Ensure bullet points are spaced
-        ai_content = ai_content.replace('<br>\t*', '<br>&nbsp;&nbsp;• ')
-        # Remove double <br>
-        ai_content = re.sub(r'(<br>\s*){2,}', '<br><br>', ai_content)
-        zone_label = zone_info['name'] if zone_info else 'Unknown Zone'
-        zone_status = zone_info['status'] if zone_info else ''
-        zone_color = zone_info.get('color', '#888888') if zone_info else '#888888'
-        zone_color_emoji = {
-            1: '💧',
-            2: '🟦',
-            3: '🟩',
-            4: '🟨',
-            5: '🟥'
-        }.get(zone, '❓')
-        # Compose a styled HTML block for AI Insights with color indicator
-        ai_insights_html = f"""
-        <div style='font-size:1.1rem;margin-bottom:0.5rem;'><b>Zone:</b> <span style='font-size:1.15rem;'>{zone_color_emoji} {zone_label}</span> <span style='display:inline-block;width:20px;height:20px;background:{zone_color};border-radius:50%;margin-left:8px;vertical-align:middle;border:2px solid #fff;'></span></div>
-        <div style='font-size:1rem;margin-bottom:0.5rem;'><b>Status:</b> {zone_status}</div>
-        <div style='font-size:1rem;line-height:1.7;margin-top:0.5rem;white-space:pre-line;'>{ai_content}</div>
-        """
+        # ------------------ SAFE JSON PARSE ------------------
+        raw = res.choices[0].message.content.strip()
+        structured = json.loads(raw)
+
+        # ------------------ UI HTML ------------------
+        html = f"""
+<div style="font-size:1.4rem;font-weight:bold;">🌡️ Urban Heat Analysis</div>
+
+<div><b>Location:</b> {structured['location']['name']}</div>
+<div><b>Temperature:</b> {structured['temperature']['value']} °C</div>
+<div><b>Zone:</b> {structured['zone']}</div>
+<div><b>Status:</b> {structured['status']}</div>
+
+<hr/>
+
+<b>Summary</b>
+<div style="margin-bottom:0.75rem;">
+{structured['analysis']['summary']}
+</div>
+
+<b>Key Causes</b>
+<ul>
+{''.join(f"<li>{c}</li>" for c in structured['analysis']['causes'])}
+</ul>
+
+<b>Recommended Actions</b>
+<ol>
+{''.join(f"<li>{a}</li>" for a in structured['analysis']['actions'])}
+</ol>
+"""
+
+
         return jsonify({
-            'analysis': ai_insights_html,
-            'temperature': round(temperature_c, 2) if temperature_c is not None else None,
-            'coordinates': {'lat': lat, 'lng': lng},
-            'location_name': location_name,
-            'zone': zone_label,
-            'zone_status': zone_status
+            "analysis": html,                      # UI
+            "structured_analysis": structured,     # PDF
+            "temperature": structured["temperature"]["value"],
+            "coordinates": {"lat": lat, "lng": lng},
+            "location_name": location_name,
+            "zone": structured["zone"],
+            "zone_status": structured["status"]
         })
+
     except Exception as e:
-        print(f"Error in analyze_location: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/static-map")
+def static_map():
+    import requests
+    from flask import Response
+
+    params = request.args.to_dict()
+    params["key"] = os.getenv("GOOGLE_MAPS_API_KEY")
+
+    r = requests.get(
+        "https://maps.googleapis.com/maps/api/staticmap",
+        params=params,
+        timeout=10
+    )
+
+    return Response(r.content, mimetype="image/png")
 
 @app.route('/')
 def serve():

@@ -1,174 +1,164 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { BitmapLayer } from "@deck.gl/layers";
 import { TileLayer } from "@deck.gl/geo-layers";
 import { fetchHeatLayer } from "../services/api";
 import { useGlobalStore } from "../context/GlobalStore";
-import html2canvas from 'html2canvas';
-
-
+import html2canvas from "html2canvas";
 
 const MapViewer = ({ moveTo }) => {
   const mapRef = useRef(null);
   const overlayRef = useRef(null);
+
   const [tileUrl, setTileUrl] = useState(null);
   const [menuPos, setMenuPos] = useState(null);
-  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
   const [clickedLatLng, setClickedLatLng] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
 
+  const {
+    activeLayer,
+    year,
+    setShowConsultant,
+    setAnalysis,                // UI HTML
+    setStructuredAnalysis,      // ✅ PDF JSON
+    setIsAnalyzing,
+    setClickedLocation,
+    setMapImage,
+  } = useGlobalStore();
 
-  // Fetch heatmap tile URL when year changes (for thermal view)
+  // ───────── Fetch Heat Tiles ─────────
   useEffect(() => {
-    if (activeLayer !== 'heat') return;
+    if (activeLayer !== "heat") return;
     fetchHeatLayer(year)
-      .then((data) => {
-        if (data.tileUrl) {
-          setTileUrl(data.tileUrl);
-        } else {
-          setTileUrl(null);
-        }
-      })
+      .then((data) => setTileUrl(data?.tileUrl || null))
       .catch(() => setTileUrl(null));
   }, [year, activeLayer]);
 
-  // Initialize map only once
+  // ───────── Initialize Map ─────────
   useEffect(() => {
     if (!window.google || !mapRef.current || mapInstance) return;
+
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: 12.9716, lng: 77.5946 },
       zoom: 10,
-      tilt: 0,
-      heading: 0,
       mapId: "3e9ab3019d1723b1f60010f9",
       disableDefaultUI: true,
     });
-    
-    // Add right-click listener using Google Maps API
-    map.addListener('contextmenu', (e) => {
+
+    map.addListener("contextmenu", (e) => {
       if (e.latLng && e.domEvent) {
-        setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-        // Use the actual mouse event for pixel position
-        setMenuPos({ x: e.domEvent.clientX, y: e.domEvent.clientY });
+        setClickedLatLng({
+          lat: e.latLng.lat(),
+          lng: e.latLng.lng(),
+        });
+        setMenuPos({
+          x: e.domEvent.clientX,
+          y: e.domEvent.clientY,
+        });
       }
     });
 
     setMapInstance(map);
+
     const overlay = new GoogleMapsOverlay({ layers: [] });
     overlay.setMap(map);
     overlayRef.current = overlay;
   }, [mapInstance]);
 
-  // Move map to searched location
+  // ───────── Move To Search Result ─────────
   useEffect(() => {
-    if (moveTo && mapInstance && moveTo.lat && moveTo.lng) {
-      mapInstance.setCenter({ lat: parseFloat(moveTo.lat), lng: parseFloat(moveTo.lng) });
+    if (moveTo && mapInstance) {
+      mapInstance.setCenter({
+        lat: parseFloat(moveTo.lat),
+        lng: parseFloat(moveTo.lng),
+      });
       mapInstance.setZoom(14);
     }
   }, [moveTo, mapInstance]);
 
-  // Update map layers based on activeLayer
+  // ───────── Overlay Heatmap ─────────
   useEffect(() => {
     if (!overlayRef.current) return;
 
-    if (activeLayer === 'heat' && tileUrl) {
-      // Show only heatmap
+    if (activeLayer === "heat" && tileUrl) {
       const heatLayer = new TileLayer({
-        id: 'heatmap-layer',
+        id: "heatmap",
         data: tileUrl,
-        minZoom: 0,
-        maxZoom: 19,
         tileSize: 256,
         opacity: 0.8,
         renderSubLayers: (props) => {
-          const {
-            bbox: { west, south, east, north }
-          } = props.tile;
-          return new BitmapLayer(props, {
-            data: null,
-            image: props.data,
-            bounds: [west, south, east, north],
-          });
-        },
+  const { west, south, east, north } = props.tile.bbox;
+
+  return new BitmapLayer({
+    id: `heatmap-${props.tile.x}-${props.tile.y}-${props.tile.z}`,
+    image: props.data,
+    bounds: [west, south, east, north],
+    data: [0],          // ✅ THIS IS THE FIX
+    opacity: 0.8,
+  });
+},
+
       });
       overlayRef.current.setProps({ layers: [heatLayer] });
     } else {
-      // Satellite view: remove all overlays (show only base map)
       overlayRef.current.setProps({ layers: [] });
     }
   }, [activeLayer, tileUrl]);
 
-  // Handle Analyze Now click
+  // ───────── ANALYZE NOW ─────────
   const handleAnalyzeNow = async () => {
     setShowConsultant(true);
     setMenuPos(null);
-    let lat = clickedLatLng?.lat;
-    let lng = clickedLatLng?.lng;
-    if (!lat || !lng) {
-      lat = 12.9716;
-      lng = 77.5946;
-    }
-    
-    // Store clicked location
-    setClickedLocation({ lat, lng });
-    
-    // Capture map screenshot
-    try {
-      if (mapRef.current) {
-        const canvas = await html2canvas(mapRef.current, {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#000000',
-        });
-        const imageData = canvas.toDataURL('image/png');
-        setMapImage(imageData);
-      }
-    } catch (err) {
-      console.error('Failed to capture map:', err);
-    }
-    
-    // Always allow Analyze Now for thermal/AI consultant (not solar)
     setIsAnalyzing(true);
+
+    const lat = clickedLatLng?.lat || 12.9716;
+    const lng = clickedLatLng?.lng || 77.5946;
+
+    setClickedLocation({ lat, lng });
+
+    // Capture map snapshot
     try {
-      // Fetch AI consultant analysis and temperature from backend
-      const analysisRes = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng })
+      const canvas = await html2canvas(mapRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#000",
       });
-      let aiText = '';
-      let temp = null;
-      let locationName = 'Unknown Location';
-      if (analysisRes.ok) {
-        const aiData = await analysisRes.json();
-        aiText = aiData.analysis;
-        temp = aiData.temperature;
-        locationName = aiData.location_name || 'Unknown Location';
+      setMapImage(canvas.toDataURL("image/png"));
+    } catch {}
+
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        // ✅ UI HTML
+        setAnalysis(data.analysis || "");
+
+        // ✅ STRUCTURED JSON FOR PDF
+        if (data.structured_analysis) {
+          setStructuredAnalysis(data.structured_analysis);
+        }
+      } else {
+        setAnalysis("Analysis failed.");
       }
-      // Compose result with rich formatting and emojis
-      let result = `<div style="font-size:1.5rem;font-weight:bold;line-height:2;">🌡️ <span style='font-size:2rem;'>Urban Heat Analysis</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Location:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${locationName}</div><div style="font-size:0.85rem;color:#888;margin-bottom:0.5rem;"><b>Coordinates:</b> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="font-size:1.1rem;font-weight:bold;">🔥 Land Surface Temperature:</div><div style="font-size:1.3rem;color:#f59e42;font-weight:bold;margin-bottom:0.5rem;">${temp !== null ? temp + '°C' : 'N/A'}</div></div><div style="font-size:1.1rem;font-weight:bold;margin-top:1rem;">🤖 AI Insights:</div><div style="font-size:1rem;line-height:1.6;margin-top:0.5rem;">${aiText.replace(/\n/g, '<br/>')}</div>`;
-      setAnalysis(result);
-    } catch (err) {
-      setAnalysis('Failed to fetch analysis. Please try again.');
+    } catch {
+      setAnalysis("Server error during analysis.");
     }
+
     setIsAnalyzing(false);
   };
 
-  // Hide menu on click elsewhere
+  // ───────── Hide Menu on Click ─────────
   useEffect(() => {
-    const hideMenu = () => {
-      console.log('[DEBUG] Hiding menu');
-      setMenuPos(null);
-    };
-    window.addEventListener('click', hideMenu);
-    return () => window.removeEventListener('click', hideMenu);
+    const hide = () => setMenuPos(null);
+    window.addEventListener("click", hide);
+    return () => window.removeEventListener("click", hide);
   }, []);
-  
-  // Debug: log menuPos changes
-  useEffect(() => {
-    console.log('[DEBUG] menuPos changed:', menuPos);
-  }, [menuPos]);
 
   return (
     <>
@@ -182,31 +172,28 @@ const MapViewer = ({ moveTo }) => {
           background: "black",
         }}
       />
+
       {menuPos && (
         <div
           style={{
-            position: 'fixed',
+            position: "fixed",
             top: menuPos.y,
             left: menuPos.x,
             zIndex: 9999,
-            background: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            padding: '8px 0',
-            minWidth: '140px',
+            background: "white",
+            borderRadius: 8,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
             style={{
-              width: '100%',
-              background: 'none',
-              border: 'none',
-              padding: '8px 16px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              color: '#06b6d4',
+              padding: "8px 16px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              border: "none",
+              background: "none",
+              color: "#06b6d4",
             }}
             onClick={handleAnalyzeNow}
           >
