@@ -13,7 +13,7 @@ const Sidebar = () => {
   return (
     <div 
       id="sidebar-panel"
-      className="absolute top-4 right-4 w-96 max-h-[90vh] bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-white overflow-y-auto z-50 shadow-2xl"
+      className="fixed right-4 top-20 w-96 max-h-[90vh] bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-white overflow-y-auto z-[101] shadow-2xl"
     >
       <div className="flex items-center gap-3 mb-6 border-b border-white/10 pb-4">
         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />

@@ -8,7 +8,7 @@ import { useGlobalStore } from "../context/GlobalStore";
 
 
 
-const MapViewer = () => {
+const MapViewer = ({ moveTo }) => {
   const mapRef = useRef(null);
   const overlayRef = useRef(null);
   const [tileUrl, setTileUrl] = useState(null);
@@ -55,6 +55,14 @@ const MapViewer = () => {
     overlayRef.current = overlay;
   }, [mapInstance]);
 
+  // Move map to searched location
+  useEffect(() => {
+    if (moveTo && mapInstance && moveTo.lat && moveTo.lng) {
+      mapInstance.setCenter({ lat: parseFloat(moveTo.lat), lng: parseFloat(moveTo.lng) });
+      mapInstance.setZoom(14);
+    }
+  }, [moveTo, mapInstance]);
+
   // Update map layers based on activeLayer
   useEffect(() => {
     if (!overlayRef.current) return;
@@ -95,15 +103,22 @@ const MapViewer = () => {
   // Handle Analyze Now click
   const handleAnalyzeNow = async () => {
     setShowConsultant(true);
-    setIsAnalyzing(true);
     setMenuPos(null);
     let lat = clickedLatLng?.lat;
     let lng = clickedLatLng?.lng;
     if (!lat || !lng) {
-      // fallback: use Bangalore center
       lat = 12.9716;
       lng = 77.5946;
     }
+    // Only allow heat analysis in Thermal X-Ray mode
+    if (activeLayer !== 'heat') {
+      setAnalysis(
+        `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Coordinates:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
+      );
+      setIsAnalyzing(false);
+      return;
+    }
+    setIsAnalyzing(true);
     try {
       // Fetch Gemini analysis and temperature from backend
       const analysisRes = await fetch('/api/analyze', {
@@ -113,13 +128,15 @@ const MapViewer = () => {
       });
       let aiText = '';
       let temp = null;
+      let locationName = 'Unknown Location';
       if (analysisRes.ok) {
         const aiData = await analysisRes.json();
         aiText = aiData.analysis;
         temp = aiData.temperature;
+        locationName = aiData.location_name || 'Unknown Location';
       }
       // Compose result with rich formatting and emojis
-      let result = `<div style="font-size:1.5rem;font-weight:bold;line-height:2;">🌡️ <span style='font-size:2rem;'>Urban Heat Analysis</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Location:</div><div style="font-size:1rem;margin-bottom:0.5rem;"><b>Lat:</b> ${lat.toFixed(4)}, <b>Lng:</b> ${lng.toFixed(4)}</div><div style="font-size:1.1rem;font-weight:bold;">🔥 Land Surface Temperature:</div><div style="font-size:1.3rem;color:#f59e42;font-weight:bold;margin-bottom:0.5rem;">${temp !== null ? temp + '°C' : 'N/A'}</div></div><div style="font-size:1.1rem;font-weight:bold;margin-top:1rem;">🤖 AI Insights:</div><div style="font-size:1rem;line-height:1.6;margin-top:0.5rem;">${aiText.replace(/\n/g, '<br/>')}</div>`;
+      let result = `<div style="font-size:1.5rem;font-weight:bold;line-height:2;">🌡️ <span style='font-size:2rem;'>Urban Heat Analysis</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Location:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${locationName}</div><div style="font-size:0.85rem;color:#888;margin-bottom:0.5rem;"><b>Coordinates:</b> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="font-size:1.1rem;font-weight:bold;">🔥 Land Surface Temperature:</div><div style="font-size:1.3rem;color:#f59e42;font-weight:bold;margin-bottom:0.5rem;">${temp !== null ? temp + '°C' : 'N/A'}</div></div><div style="font-size:1.1rem;font-weight:bold;margin-top:1rem;">🤖 AI Insights:</div><div style="font-size:1rem;line-height:1.6;margin-top:0.5rem;">${aiText.replace(/\n/g, '<br/>')}</div>`;
       setAnalysis(result);
     } catch (err) {
       setAnalysis('Failed to fetch analysis. Please try again.');

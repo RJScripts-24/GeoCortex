@@ -121,6 +121,34 @@ def analyze_location():
         lat = data.get('lat')
         lng = data.get('lng')
 
+        # Get actual location name using reverse geocoding
+        location_name = "Unknown Location"
+        try:
+            geocode_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
+            geocode_headers = {'User-Agent': 'GeoCortex/1.0'}
+            geocode_response = requests.get(geocode_url, headers=geocode_headers, timeout=5)
+            if geocode_response.ok:
+                geocode_data = geocode_response.json()
+                address = geocode_data.get('address', {})
+                # Build location name from address components
+                parts = []
+                if 'neighbourhood' in address:
+                    parts.append(address['neighbourhood'])
+                elif 'suburb' in address:
+                    parts.append(address['suburb'])
+                elif 'road' in address:
+                    parts.append(address['road'])
+                if 'city' in address:
+                    parts.append(address['city'])
+                elif 'town' in address:
+                    parts.append(address['town'])
+                if 'state' in address:
+                    parts.append(address['state'])
+                location_name = ', '.join(parts) if parts else geocode_data.get('display_name', 'Unknown Location')
+                print(f"Reverse geocoded location: {location_name}")
+        except Exception as geo_error:
+            print(f"Geocoding error: {geo_error}")
+
         temperature_c = None
         try:
             # Get temperature from Earth Engine for the given point
@@ -147,14 +175,13 @@ def analyze_location():
             raise RuntimeError("GROQ_API_KEY is not set in the environment. Please add it to your .env file.")
         client = Groq(api_key=api_key)
         
-        # Enhanced prompt with location details
-        prompt = f"""Analyze the urban heat island effect at the coordinates {lat}, {lng}.
+        # Enhanced prompt with actual location name
+        prompt = f"""Analyze the urban heat island effect at {location_name} (coordinates: {lat}, {lng}).
 
     Please provide:
-    1. The exact location name (city/area)
-    2. Current temperature analysis (Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C)
-    3. What is causing heat in this region (urban factors, land use, etc.)
-    4. Three specific actionable ways to reduce heat in this region
+    1. Current temperature analysis (Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C)
+    2. What is causing heat in this region (urban factors, land use, etc.)
+    3. Three specific actionable ways to reduce heat in this region
 
     Keep the response concise and specific to this location."""
         
@@ -166,7 +193,8 @@ def analyze_location():
         return jsonify({
             'analysis': response.choices[0].message.content,
             'temperature': round(temperature_c, 2) if temperature_c is not None else None,
-            'coordinates': {'lat': lat, 'lng': lng}
+            'coordinates': {'lat': lat, 'lng': lng},
+            'location_name': location_name
         })
     except Exception as e:
         print(f"Error in analyze_location: {e}")
