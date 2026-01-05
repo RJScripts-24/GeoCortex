@@ -11,6 +11,8 @@ export const GlobalProvider = ({ children }) => {
   const [showConsultant, setShowConsultant] = useState(false);
   const [clickedLocation, setClickedLocation] = useState(null);
   const [mapImage, setMapImage] = useState(null);
+  // Energy Mode state
+  const [isEnergyMode, setIsEnergyMode] = useState(false);
 
   return (
     <GlobalContext.Provider value={{
@@ -29,7 +31,9 @@ export const GlobalProvider = ({ children }) => {
       setClickedLocation,
       mapImage,
       setMapImage,
-      setShowConsultant
+      setShowConsultant,
+      isEnergyMode,
+      setIsEnergyMode
     }}>
       {children}
     </GlobalContext.Provider>

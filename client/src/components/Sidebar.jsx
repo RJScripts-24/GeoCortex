@@ -3,7 +3,7 @@ import { useGlobalStore } from '../context/GlobalStore';
 import { generatePDF } from '../utils/pdfGenerator';
 
 const Sidebar = () => {
-  const { analysis, isAnalyzing, showConsultant, setShowConsultant, clickedLocation, mapImage } = useGlobalStore();
+  const { analysis, isAnalyzing, showConsultant, setShowConsultant, clickedLocation, mapImage, isEnergyMode, setIsEnergyMode } = useGlobalStore();
 
   const handleDownload = () => {
     // Remove all HTML tags and decode entities for clean text
@@ -18,13 +18,35 @@ const Sidebar = () => {
     generatePDF(htmlToText(analysis), clickedLocation, mapImage);
   };
 
-  if (!showConsultant) return null;
   return (
-    <div 
-      id="sidebar-panel"
-      className="fixed right-4 top-20 w-96 max-h-[90vh] bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-white overflow-y-auto z-[101] shadow-2xl"
-    >
-      <div className="flex items-center gap-3 mb-6 border-b border-white/10 pb-4">
+    <>
+      {/* Solar Flux Map Button (Energy Mode) */}
+      <div className="fixed left-4 top-20 z-[102]">
+        <button
+          onClick={() => setIsEnergyMode((v) => !v)}
+          style={{
+            background: isEnergyMode ? '#ffe066' : '#fff',
+            border: '1px solid #ccc',
+            margin: '10px 0',
+            cursor: 'pointer',
+            padding: '10px 18px',
+            borderRadius: '8px',
+            fontWeight: 600,
+            color: '#222',
+            boxShadow: isEnergyMode ? '0 0 8px #ffe066' : 'none',
+            transition: 'all 0.2s'
+          }}
+        >
+          {isEnergyMode ? 'Exit Solar Flux Map' : 'Solar Flux Map'}
+        </button>
+      </div>
+      {/* ...existing code... */}
+      {showConsultant && (
+        <div 
+          id="sidebar-panel"
+          className="fixed right-4 top-20 w-96 max-h-[90vh] bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-white overflow-y-auto z-[101] shadow-2xl"
+        >
+          <div className="flex items-center gap-3 mb-6 border-b border-white/10 pb-4">
         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />
         <h2 className="text-xl font-mono tracking-widest text-cyan-400">
           AI CONSULTANT
@@ -74,8 +96,10 @@ const Sidebar = () => {
             </p>
           </div>
         )}
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

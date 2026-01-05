@@ -1,7 +1,9 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 import { fetchHeatLayer } from '../services/api';
 import html2canvas from 'html2canvas';
+import EnergyModeCesium from './EnergyModeCesium.jsx';
 
 
 
@@ -315,40 +317,8 @@ const CesiumViewer = ({ moveTo }) => {
   return (
     <div className="relative w-full h-screen" onContextMenu={handleContextMenu}>
       <div ref={containerRef} className="w-full h-full" />
-
-      {/* Context Menu */}
-      {menuPos && (
-        <div
-          style={{
-            position: 'fixed',
-            top: menuPos.y,
-            left: menuPos.x,
-            zIndex: 1000,
-            background: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            padding: '8px 0',
-            minWidth: '140px',
-          }}
-        >
-          <button
-            style={{
-              width: '100%',
-              background: 'none',
-              border: 'none',
-              padding: '8px 16px',
-              textAlign: 'left',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              color: '#06b6d4',
-            }}
-            onClick={handleAnalyzeNow}
-          >
-            Analyze Now
-          </button>
-        </div>
-      )}
-
+      {/* Energy Mode Rectangle & Context Menu */}
+      <EnergyModeCesium viewer={viewerRef.current} />
       {/* Info Panel */}
       <div className="absolute top-4 left-4 bg-black/80 text-white p-4 rounded-lg max-w-xs z-10">
         <h2 className="text-lg font-bold text-green-400 mb-2">🌍 Bangalore Digital Twin</h2>

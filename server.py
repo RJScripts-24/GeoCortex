@@ -5,6 +5,7 @@ from groq import Groq
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
+from solar_engine import analyze_solar_potential, analyze_solar_potential_with_ai
 
 load_dotenv()
 
@@ -30,6 +31,53 @@ except Exception as e:
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'online'})
+
+@app.route('/api/analyze_solar', methods=['POST'])
+def solar_analysis():
+    """
+    Solar analysis endpoint that combines Google Solar API + Groq AI
+    Returns HTML-formatted analysis for AI Consultant popup
+    """
+    print(f"[DEBUG] /api/analyze_solar endpoint called")
+    try:
+        data = request.json
+        print(f"[DEBUG] Received data: {data}")
+        lat = data.get('lat')
+        lng = data.get('lng')
+        bounds = data.get('bounds')  # {north, south, east, west}
+        
+        if not lat or not lng or not bounds:
+            return jsonify({"error": "Coordinates and bounds required"}), 400
+        
+        solar_api_key = os.getenv('GOOGLE_SOLAR_API_KEY')
+        groq_api_key = os.getenv('GROQ_API_KEY')
+        
+        if not solar_api_key or not groq_api_key:
+            return jsonify({"error": "API keys not configured"}), 500
+        
+        # Call the enhanced analysis function
+        print(f"[DEBUG] Calling analyze_solar_potential_with_ai with lat={lat}, lng={lng}, bounds={bounds}")
+        html_result, error, raw_data = analyze_solar_potential_with_ai(
+            lat, lng, bounds, solar_api_key, groq_api_key
+        )
+        
+        print(f"[DEBUG] Analysis result - error: {error}, html_result length: {len(html_result) if html_result else 0}")
+        
+        if error:
+            print(f"[DEBUG] Returning 404 with error: {error}")
+            return jsonify({"error": error}), 404
+        
+        return jsonify({
+            "analysis": html_result,
+            "coordinates": {"lat": lat, "lng": lng},
+            "building_polygon": raw_data.get("solarPotential", {}).get("roofSegmentStats", [{}])[0].get("boundingPolygon") if raw_data else None
+        })
+        
+    except Exception as e:
+        print(f"Error in solar_analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/heat/<int:year>')
 def get_heat_layer(year):
@@ -317,4 +365,9 @@ def serve():
     return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
+    # Print all registered routes for debugging
+    print("\n=== Registered Flask Routes ===")
+    for rule in app.url_map.iter_rules():
+        print(f"{rule.rule} -> {rule.endpoint} [{', '.join(rule.methods)}]")
+    print("================================\n")
     app.run(debug=True, port=5000)
