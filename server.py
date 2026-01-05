@@ -153,18 +153,21 @@ def analyze_location():
         try:
             # Get temperature from Earth Engine for the given point
             point = ee.Geometry.Point([lng, lat])
-            # Get latest available MODIS LST data
-            image = ee.ImageCollection('MODIS/061/MOD11A2') \
-                .filterBounds(point) \
-                .select('LST_Day_1km') \
-                .sort('system:time_start', False) \
-                .first()
             
-            # MODIS LST scale factor is 0.02 (multiply by 0.02 to get Kelvin)
+            # Get the same image collection used for visualization
+            image = ee.ImageCollection('MODIS/061/MOD11A2') \
+                .filter(ee.Filter.date(f'{data.get("year", 2025)}-01-01', f'{data.get("year", 2025)}-12-31')) \
+                .select('LST_Day_1km') \
+                .mean()
+            
+            # Sample temperature at the clicked point
             lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
+            
             if lst_value is not None and lst_value > 0:
+                # Convert to Celsius (MODIS LST scale factor is 0.02)
                 temperature_k = lst_value * 0.02
                 temperature_c = temperature_k - 273.15
+                
                 print(f"LST raw value: {lst_value}, Kelvin: {temperature_k}, Celsius: {temperature_c}")
         except Exception as ee_error:
             print(f"Earth Engine error: {ee_error}")
@@ -175,26 +178,118 @@ def analyze_location():
             raise RuntimeError("GROQ_API_KEY is not set in the environment. Please add it to your .env file.")
         client = Groq(api_key=api_key)
         
-        # Enhanced prompt with actual location name
-        prompt = f"""Analyze the urban heat island effect at {location_name} (coordinates: {lat}, {lng}).
-
-    Please provide:
-    1. Current temperature analysis (Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C)
-    2. What is causing heat in this region (urban factors, land use, etc.)
-    3. Three specific actionable ways to reduce heat in this region
-
-    Keep the response concise and specific to this location."""
+        # Zone classification based on ACTUAL TEMPERATURE
+        # Updated thresholds to match real-world heat conditions
+        zone = None
+        zone_info = None
+        temp_c = temperature_c if temperature_c is not None else None
+        
+        if temp_c is not None:
+            if temp_c < 18:  # Very cool - water bodies, deep shade
+                zone = 1
+                zone_info = {
+                    "name": "Blue Zone (Water & Deep Shade)",
+                    "status": "✅ Healthy / Protected",
+                    "color": "#0502ff",
+                    "suggestions": [
+                        "Preservation: Maintain the current state of this area.",
+                        "Monitor Water Quality (if water body present).",
+                        "Prevent Encroachment (no new construction).",
+                        "Biodiversity Check (high ecological value)."
+                    ]
+                }
+            elif temp_c < 24:  # Comfortable - well-shaded urban areas
+                zone = 2
+                zone_info = {
+                    "name": "Cyan Zone (Comfortable Urban Areas)",
+                    "status": "🟢 Stable",
+                    "color": "#30c8e2",
+                    "suggestions": [
+                        "Maintain Green Cover (protect existing trees).",
+                        "Rainwater Harvesting (groundwater recharge)."
+                    ]
+                }
+            elif temp_c < 28:  # Warming - transition areas with sparse vegetation
+                zone = 3
+                zone_info = {
+                    "name": "Green Zone (Transition Areas)",
+                    "status": "⚠️ At Risk",
+                    "color": "#3ae237",
+                    "suggestions": [
+                        "Canopy Upgrade (plant tall trees, not just grass).",
+                        "Soil Moisture Retention (mulching, prevent drying)."
+                    ]
+                }
+            elif temp_c < 34:  # Hot - roads, dense residential, parking lots
+                zone = 4
+                zone_info = {
+                    "name": "Yellow/Orange Zone (Warning Zone)",
+                    "status": "🟠 Mitigation Required",
+                    "color": "#ff8b13",
+                    "suggestions": [
+                        "Street Avenue Planting (trees along roads).",
+                        "Cool Pavements (replace asphalt with permeable pavers).",
+                        "Vertical Gardens (green walls on pillars/fences)."
+                    ]
+                }
+            else:  # Extreme heat - industrial, large roofs, highways
+                zone = 5
+                zone_info = {
+                    "name": "Red Zone (Critical Heat Island)",
+                    "status": "🚨 CRITICAL INTERVENTION",
+                    "color": "#ff0000",
+                    "suggestions": [
+                        "Priority 1: Cool Roofing (paint black roofs white).",
+                        "Priority 2: Miyawaki Forest (ultra-dense forest buffer if possible).",
+                        "Priority 3: Mist Cooling Systems (for plazas where trees can't grow)."
+                    ]
+                }
+        # Enhanced prompt with actual location name and zone suggestions
+        prompt = (
+            f"Analyze the urban heat island effect at {location_name} (coordinates: {lat}, {lng}).\n\n"
+            f"Land Surface Temperature: {round(temperature_c, 2) if temperature_c is not None else 'N/A'}°C\n"
+            + (
+                f"\nGeoCortex Zone: {zone_info['name']}\nStatus: {zone_info['status']}\nAI Suggestions for this zone:\n- "
+                + "\n- ".join(zone_info['suggestions']) + "\n" if zone_info else ""
+            )
+            + "\nPlease provide:\n"
+            "1. Current temperature analysis.\n"
+            "2. What is causing heat in this region (urban factors, land use, etc.).\n"
+            "3. Three specific actionable ways to reduce heat in this region.\n\n"
+            "Keep the response concise and specific to this location."
+        )
         
         response = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
         )
 
+        # Format AI Insights with emojis, font sizes, and bold for frontend display
+        ai_content = response.choices[0].message.content
+        zone_label = zone_info['name'] if zone_info else 'Unknown Zone'
+        zone_status = zone_info['status'] if zone_info else ''
+        zone_color = zone_info.get('color', '#888888') if zone_info else '#888888'
+        zone_color_emoji = {
+            1: '💧',
+            2: '🟦',
+            3: '🟩',
+            4: '🟨',
+            5: '🟥'
+        }.get(zone, '❓')
+        # Compose a styled HTML block for AI Insights with color indicator
+        ai_insights_html = f"""
+        <div style='font-size:1.25rem;font-weight:bold;margin-bottom:0.5rem;'>🤖 <span style='font-size:1.4rem;'>AI Insights</span></div>
+        <div style='font-size:1.1rem;margin-bottom:0.5rem;'><b>Zone:</b> <span style='font-size:1.15rem;'>{zone_color_emoji} {zone_label}</span> <span style='display:inline-block;width:20px;height:20px;background:{zone_color};border-radius:50%;margin-left:8px;vertical-align:middle;border:2px solid #fff;'></span></div>
+        <div style='font-size:1rem;margin-bottom:0.5rem;'><b>Status:</b> {zone_status}</div>
+        <div style='font-size:1rem;line-height:1.7;margin-top:0.5rem;white-space:pre-line;'>{ai_content}</div>
+        """
         return jsonify({
-            'analysis': response.choices[0].message.content,
+            'analysis': ai_insights_html,
             'temperature': round(temperature_c, 2) if temperature_c is not None else None,
             'coordinates': {'lat': lat, 'lng': lng},
-            'location_name': location_name
+            'location_name': location_name,
+            'zone': zone_label,
+            'zone_status': zone_status
         })
     except Exception as e:
         print(f"Error in analyze_location: {e}")
