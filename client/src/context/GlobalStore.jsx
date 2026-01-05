@@ -9,6 +9,8 @@ export const GlobalProvider = ({ children }) => {
   const [analysis, setAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showConsultant, setShowConsultant] = useState(false);
+  const [clickedLocation, setClickedLocation] = useState(null);
+  const [mapImage, setMapImage] = useState(null);
 
   return (
     <GlobalContext.Provider value={{
@@ -23,6 +25,10 @@ export const GlobalProvider = ({ children }) => {
       isAnalyzing,
       setIsAnalyzing,
       showConsultant,
+      clickedLocation,
+      setClickedLocation,
+      mapImage,
+      setMapImage,
       setShowConsultant
     }}>
       {children}

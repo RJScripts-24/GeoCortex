@@ -3,10 +3,19 @@ import { useGlobalStore } from '../context/GlobalStore';
 import { generatePDF } from '../utils/pdfGenerator';
 
 const Sidebar = () => {
-  const { analysis, isAnalyzing, showConsultant, setShowConsultant } = useGlobalStore();
+  const { analysis, isAnalyzing, showConsultant, setShowConsultant, clickedLocation, mapImage } = useGlobalStore();
 
   const handleDownload = () => {
-    generatePDF(analysis);
+    // Remove all HTML tags and decode entities for clean text
+    const htmlToText = (html) => {
+      // Remove tags
+      let text = html.replace(/<[^>]+>/g, ' ');
+      // Decode HTML entities
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = text;
+      return tempDiv.textContent || tempDiv.innerText || '';
+    };
+    generatePDF(htmlToText(analysis), clickedLocation, mapImage);
   };
 
   if (!showConsultant) return null;
@@ -36,14 +45,14 @@ const Sidebar = () => {
           </div>
         ) : analysis ? (
           <div className="space-y-4">
-            <div className="mb-4 p-3 bg-cyan-900/30 rounded-lg border border-cyan-700/30">
-              <div className="font-mono text-xs text-cyan-300">
-                <span className="font-bold">Location:</span> {analysis && analysis.match(/<div style=\"font-size:1rem;margin-bottom:0.5rem;\">(.*?)<\/div>/)?.[1]}
-              </div>
-              <div className="font-mono text-xs text-cyan-300">
-                <span className="font-bold">Coordinates:</span> {analysis && analysis.match(/<b>Coordinates:<\/b> ([^<]*)<\/div>/)?.[1]}
-              </div>
-            </div>
+            <div 
+              style={{
+                color: '#d1d5db',
+                fontSize: '1rem',
+                lineHeight: '1.6'
+              }}
+              dangerouslySetInnerHTML={{ __html: analysis }} 
+            />
             
             <div className="pt-4 border-t border-white/10 mt-4">
               <button

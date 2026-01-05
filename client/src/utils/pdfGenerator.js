@@ -1,32 +1,198 @@
 import { jsPDF } from 'jspdf';
 
-export const generatePDF = (analysisText) => {
+const GOOGLE_MAPS_API_KEY = 'AIzaSyC6V4mJQ9lANXKW0GVdgSxW0EZ10wqftiw';
+
+// Clean text from emojis
+const cleanEmojis = (text) => {
+  return text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\uFE0F]|[\u{1F1E6}-\u{1F1FF}]/gu, '');
+};
+
+// Fetch image and convert to base64
+const fetchImageAsBase64 = async (url) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+};
+
+export const generatePDF = async (analysisText, location, mapImage) => {
   const doc = new jsPDF();
+  let y = 20;
   
+  // Title
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
+  doc.setFontSize(18);
   doc.setTextColor(6, 182, 212);
-  doc.text("GEOCORTEX AI ANALYSIS REPORT", 20, 20);
+  doc.text("GEOCORTEX AI ANALYSIS REPORT", 20, y);
+  y += 12;
   
+  // Metadata
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 30);
-  doc.text("Source: Landsat 9 Satellite Data", 20, 35);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, y);
+  y += 5;
+  doc.text("Source: Landsat 9 Satellite Data", 20, y);
+  y += 8;
   
+  // Line
   doc.setDrawColor(6, 182, 212);
-  doc.setLineWidth(0.5);
-  doc.line(20, 40, 190, 40);
+  doc.line(20, y, 190, y);
+  y += 10;
   
-  doc.setFontSize(12);
+  // Add map image using Google Static Maps API
+  if (location) {
+    try {
+      const zoom = 14;
+      const size = '600x400';
+      const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${location.lat},${location.lng}&zoom=${zoom}&size=${size}&maptype=satellite&markers=color:red%7C${location.lat},${location.lng}&key=${GOOGLE_MAPS_API_KEY}`;
+      
+      // Fetch and convert image to base64
+      const imageData = await fetchImageAsBase64(mapUrl);
+      doc.addImage(imageData, 'JPEG', 20, y, 170, 100);
+      y += 105;
+      
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.setFont("helvetica", "italic");
+      doc.text(`Analysis Location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)} (1km radius coverage)`, 20, y);
+      y += 10;
+      doc.setFont("helvetica", "normal");
+    } catch (err) {
+      console.error('Map load error:', err);
+      // Continue without map if it fails
+    }
+  }
+  
+  // Parse and format analysis text
+  const cleaned = cleanEmojis(analysisText || "No data");
+  const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l);
+  
   doc.setTextColor(0);
   
-  const splitText = doc.splitTextToSize(analysisText || "No analysis data provided.", 170);
-  doc.text(splitText, 20, 50);
+  for (const line of lines) {
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
+    
+    // Title: Urban Heat Analysis
+    if (line.includes('Urban Heat Analysis')) {
+      y += 3;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text('Urban Heat Analysis', 20, y);
+      y += 10;
+      continue;
+    }
+    
+    // Location section
+    if (line.startsWith('Location:')) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text('Location:', 20, y);
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const loc = line.replace('Location:', '').trim();
+      const wrapped = doc.splitTextToSize(loc, 170);
+      doc.text(wrapped, 20, y);
+      y += wrapped.length * 5 + 3;
+      continue;
+    }
+    
+    // Coordinates
+    if (line.includes('Coordinates:')) {
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(line, 20, y);
+      y += 5;
+      doc.setTextColor(0);
+      continue;
+    }
+    
+    // Temperature
+    if (line.includes('Land Surface Temperature:')) {
+      y += 2;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text('Land Surface Temperature:', 20, y);
+      y += 6;
+      const temp = line.split(':')[1]?.trim() || 'N/A';
+      doc.setFontSize(13);
+      doc.setTextColor(245, 158, 66);
+      doc.text(temp, 20, y);
+      y += 8;
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+      continue;
+    }
+    
+    // Zone/Status
+    if (line.includes('Zone:') || line.includes('Status:')) {
+      doc.setFontSize(10);
+      doc.text(line, 20, y);
+      y += 6;
+      continue;
+    }
+    
+    // AI Insights
+    if (line.includes('AI Insights:')) {
+      y += 3;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text('AI Insights:', 20, y);
+      y += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      continue;
+    }
+    
+    // Numbered items (1. 2. 3.)
+    const numMatch = line.match(/^(\d+)\.\s*(.+)$/);
+    if (numMatch) {
+      y += 3;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      const wrapped = doc.splitTextToSize(line, 170);
+      doc.text(wrapped, 20, y);
+      y += wrapped.length * 5 + 4;
+      doc.setFont("helvetica", "normal");
+      continue;
+    }
+    
+    // Bullets
+    if (line.startsWith('*')) {
+      const text = line.substring(1).trim();
+      const wrapped = doc.splitTextToSize(text, 160);
+      doc.setFontSize(9);
+      doc.text('•', 25, y);
+      doc.text(wrapped, 30, y);
+      y += wrapped.length * 4.5 + 2;
+      continue;
+    }
+    
+    // Regular text
+    doc.setFontSize(10);
+    const wrapped = doc.splitTextToSize(line, 170);
+    doc.text(wrapped, 20, y);
+    y += wrapped.length * 5 + 3;
+  }
   
-  doc.setFontSize(10);
-  doc.setTextColor(150);
-  doc.text("CONFIDENTIAL - GEOCORTEX COMMAND CENTER", 105, 280, { align: "center" });
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.text("CONFIDENTIAL - GEOCORTEX COMMAND CENTER", 105, 285, { align: "center" });
   
   doc.save('GeoCortex_Report.pdf');
 };

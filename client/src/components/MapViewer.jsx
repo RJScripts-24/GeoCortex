@@ -5,6 +5,7 @@ import { BitmapLayer } from "@deck.gl/layers";
 import { TileLayer } from "@deck.gl/geo-layers";
 import { fetchHeatLayer } from "../services/api";
 import { useGlobalStore } from "../context/GlobalStore";
+import html2canvas from 'html2canvas';
 
 
 
@@ -13,7 +14,7 @@ const MapViewer = ({ moveTo }) => {
   const overlayRef = useRef(null);
   const [tileUrl, setTileUrl] = useState(null);
   const [menuPos, setMenuPos] = useState(null);
-  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing } = useGlobalStore();
+  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
   const [clickedLatLng, setClickedLatLng] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
 
@@ -110,6 +111,25 @@ const MapViewer = ({ moveTo }) => {
       lat = 12.9716;
       lng = 77.5946;
     }
+    
+    // Store clicked location
+    setClickedLocation({ lat, lng });
+    
+    // Capture map screenshot
+    try {
+      if (mapRef.current) {
+        const canvas = await html2canvas(mapRef.current, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#000000',
+        });
+        const imageData = canvas.toDataURL('image/png');
+        setMapImage(imageData);
+      }
+    } catch (err) {
+      console.error('Failed to capture map:', err);
+    }
+    
     // Only allow heat analysis in Thermal X-Ray mode
     if (activeLayer !== 'heat') {
       setAnalysis(
