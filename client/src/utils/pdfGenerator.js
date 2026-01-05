@@ -41,7 +41,7 @@ const fetchImageAsBase64 = async (url) => {
   });
 };
 
-export const generatePDF = async (analysisText, location, mapImage) => {
+export const generatePDF = async (analysisText, location, mapImage, chatMessages = []) => {
   const doc = new jsPDF();
   let y = 20;
   
@@ -205,10 +205,37 @@ export const generatePDF = async (analysisText, location, mapImage) => {
     y += wrapped.length * 5 + 3;
   }
   
+  // Chatbot Conversation Section
+  if (chatMessages && chatMessages.length > 0) {
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(6, 182, 212);
+    doc.text("AI Chatbot Conversation", 20, y);
+    y += 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(0);
+    for (const msg of chatMessages) {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      const prefix = msg.role === 'user' ? 'You: ' : 'AI: ';
+      const wrapped = doc.splitTextToSize(prefix + (msg.text || ''), 170);
+      doc.text(wrapped, 20, y);
+      y += wrapped.length * 5 + 2;
+    }
+  }
+
   // Footer
   doc.setFontSize(8);
   doc.setTextColor(120);
   doc.text("CONFIDENTIAL - GEOCORTEX COMMAND CENTER", 105, 285, { align: "center" });
-  
+
   doc.save('GeoCortex_Report.pdf');
 };

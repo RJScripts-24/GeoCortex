@@ -71,27 +71,6 @@ const CesiumViewer = ({ moveTo }) => {
       }
       // eslint-disable-next-line
     }, [heatTileUrl, activeLayer]);
-  // Handle right-click to show context menu
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-    if (!viewerRef.current || !window.Cesium) return;
-    // Get mouse position in Cesium scene
-    const Cesium = window.Cesium;
-    const scene = viewerRef.current.scene;
-    const cartesian = scene.camera.pickEllipsoid(
-      new Cesium.Cartesian2(e.nativeEvent.offsetX, e.nativeEvent.offsetY),
-      scene.globe.ellipsoid
-    );
-    if (cartesian) {
-      const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-      const lat = Cesium.Math.toDegrees(cartographic.latitude);
-      const lng = Cesium.Math.toDegrees(cartographic.longitude);
-      setClickedLatLng({ lat, lng });
-      setMenuPos({ x: e.clientX, y: e.clientY });
-    } else {
-      setMenuPos(null);
-    }
-  };
 
   // Hide menu on click elsewhere
   useEffect(() => {
@@ -160,8 +139,6 @@ const CesiumViewer = ({ moveTo }) => {
     }
     setIsAnalyzing(false);
   };
-
-
 
   useEffect(() => {
     // Load Cesium dynamically
@@ -241,6 +218,29 @@ const CesiumViewer = ({ moveTo }) => {
 
     viewerRef.current = viewer;
 
+    // Attach context menu handler to canvas
+    const canvas = containerRef.current.querySelector('canvas');
+    if (canvas) {
+      const handleCesiumContextMenu = (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cartesian = viewer.scene.camera.pickEllipsoid(
+          new Cesium.Cartesian2(x, y),
+          viewer.scene.globe.ellipsoid
+        );
+        if (cartesian) {
+          const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+          const lat = Cesium.Math.toDegrees(cartographic.latitude);
+          const lng = Cesium.Math.toDegrees(cartographic.longitude);
+          setClickedLatLng({ lat, lng });
+          setMenuPos({ x: e.clientX, y: e.clientY });
+        }
+      };
+      canvas.addEventListener('contextmenu', handleCesiumContextMenu);
+    }
+
     // Show globe and sky atmosphere
     if (viewer.scene && viewer.scene.globe) {
       viewer.scene.globe.show = true;
@@ -315,7 +315,7 @@ const CesiumViewer = ({ moveTo }) => {
   };
 
   return (
-    <div className="relative w-full h-screen" onContextMenu={handleContextMenu}>
+    <div className="relative w-full h-screen">
       <div ref={containerRef} className="w-full h-full" />
       {/* Energy Mode Rectangle & Context Menu */}
       <EnergyModeCesium viewer={viewerRef.current} />
@@ -327,6 +327,39 @@ const CesiumViewer = ({ moveTo }) => {
         <p className="text-xs mb-1">Real-world lighting enabled</p>
         <p className="text-xs">Use mouse to navigate</p>
       </div>
+      {/* Custom context menu */}
+      {menuPos && (
+        <div
+          style={{
+            position: 'fixed',
+            top: menuPos.y,
+            left: menuPos.x,
+            zIndex: 9999,
+            background: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            padding: '8px 0',
+            minWidth: '140px',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            style={{
+              width: '100%',
+              background: 'none',
+              border: 'none',
+              padding: '8px 16px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              color: '#06b6d4',
+            }}
+            onClick={handleAnalyzeNow}
+          >
+            Analyze Now
+          </button>
+        </div>
+      )}
     </div>
   );
 };

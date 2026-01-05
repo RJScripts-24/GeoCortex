@@ -1,9 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 import { generatePDF } from '../utils/pdfGenerator';
 
+import Chatbot from './Chatbot';
+
 const Sidebar = () => {
+
   const { analysis, isAnalyzing, showConsultant, setShowConsultant, clickedLocation, mapImage, isEnergyMode, setIsEnergyMode } = useGlobalStore();
+
+  // Chatbot state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  // Connect to backend chatbot endpoint
+  const handleChatSend = async (userMsg) => {
+    setChatMessages((msgs) => [...msgs, { role: 'user', text: userMsg }]);
+    setChatLoading(true);
+    try {
+      // Use last clicked location and year from global store
+      const lat = clickedLocation?.lat;
+      const lng = clickedLocation?.lng;
+      const year = (window?.storeYear) || 2025; // fallback if not in global
+      // Try to get from global store if available
+      let y = year;
+      try { y = window?.storeYear || year; } catch {}
+      const res = await fetch('/api/chatbot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: userMsg,
+          lat,
+          lng,
+          year: y
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setChatMessages((msgs) => [...msgs, { role: 'ai', text: data.answer }]);
+      } else {
+        setChatMessages((msgs) => [...msgs, { role: 'ai', text: 'AI failed to answer. Please try again.' }]);
+      }
+    } catch (err) {
+      setChatMessages((msgs) => [...msgs, { role: 'ai', text: 'Error connecting to AI backend.' }]);
+    }
+    setChatLoading(false);
+  };
 
   const handleDownload = () => {
     // Remove all HTML tags and decode entities for clean text
@@ -15,7 +56,7 @@ const Sidebar = () => {
       tempDiv.innerHTML = text;
       return tempDiv.textContent || tempDiv.innerText || '';
     };
-    generatePDF(htmlToText(analysis), clickedLocation, mapImage);
+    generatePDF(htmlToText(analysis), clickedLocation, mapImage, chatMessages);
   };
 
   return (
@@ -75,7 +116,6 @@ const Sidebar = () => {
               }}
               dangerouslySetInnerHTML={{ __html: analysis }} 
             />
-            
             <div className="pt-4 border-t border-white/10 mt-4">
               <button
                 onClick={handleDownload}
@@ -87,6 +127,9 @@ const Sidebar = () => {
                 </svg>
               </button>
             </div>
+            {/* Chatbot below analysis */}
+            <Chatbot onSend={handleChatSend} messages={chatMessages} />
+            {chatLoading && <div className="text-cyan-300 text-xs mt-2 animate-pulse">AI is typing...</div>}
           </div>
         ) : (
           <div className="text-center text-gray-500 py-10 font-mono text-sm">

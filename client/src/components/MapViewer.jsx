@@ -44,12 +44,16 @@ const MapViewer = ({ moveTo }) => {
       mapId: "3e9ab3019d1723b1f60010f9",
       disableDefaultUI: true,
     });
-    // Add listener to capture clicked coordinates
+    
+    // Add right-click listener using Google Maps API
     map.addListener('contextmenu', (e) => {
-      if (e.latLng) {
+      if (e.latLng && e.domEvent) {
         setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        // Use the actual mouse event for pixel position
+        setMenuPos({ x: e.domEvent.clientX, y: e.domEvent.clientY });
       }
     });
+
     setMapInstance(map);
     const overlay = new GoogleMapsOverlay({ layers: [] });
     overlay.setMap(map);
@@ -95,12 +99,6 @@ const MapViewer = ({ moveTo }) => {
     }
   }, [activeLayer, tileUrl]);
 
-  // Handle right-click to show context menu
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-    setMenuPos({ x: e.clientX, y: e.clientY });
-  };
-
   // Handle Analyze Now click
   const handleAnalyzeNow = async () => {
     setShowConsultant(true);
@@ -130,17 +128,10 @@ const MapViewer = ({ moveTo }) => {
       console.error('Failed to capture map:', err);
     }
     
-    // Only allow heat analysis in Thermal X-Ray mode
-    if (activeLayer !== 'heat') {
-      setAnalysis(
-        `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Coordinates:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
-      );
-      setIsAnalyzing(false);
-      return;
-    }
+    // Always allow Analyze Now for thermal/AI consultant (not solar)
     setIsAnalyzing(true);
     try {
-      // Fetch Gemini analysis and temperature from backend
+      // Fetch AI consultant analysis and temperature from backend
       const analysisRes = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,10 +157,18 @@ const MapViewer = ({ moveTo }) => {
 
   // Hide menu on click elsewhere
   useEffect(() => {
-    const hideMenu = () => setMenuPos(null);
+    const hideMenu = () => {
+      console.log('[DEBUG] Hiding menu');
+      setMenuPos(null);
+    };
     window.addEventListener('click', hideMenu);
     return () => window.removeEventListener('click', hideMenu);
   }, []);
+  
+  // Debug: log menuPos changes
+  useEffect(() => {
+    console.log('[DEBUG] menuPos changed:', menuPos);
+  }, [menuPos]);
 
   return (
     <>
@@ -182,7 +181,6 @@ const MapViewer = ({ moveTo }) => {
           height: "100vh",
           background: "black",
         }}
-        onContextMenu={handleContextMenu}
       />
       {menuPos && (
         <div
@@ -190,13 +188,14 @@ const MapViewer = ({ moveTo }) => {
             position: 'fixed',
             top: menuPos.y,
             left: menuPos.x,
-            zIndex: 1000,
+            zIndex: 9999,
             background: 'white',
             borderRadius: '8px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
             padding: '8px 0',
             minWidth: '140px',
           }}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             style={{

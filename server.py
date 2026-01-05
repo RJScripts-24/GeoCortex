@@ -32,52 +32,53 @@ except Exception as e:
 def health_check():
     return jsonify({'status': 'online'})
 
-@app.route('/api/analyze_solar', methods=['POST'])
-def solar_analysis():
-    """
-    Solar analysis endpoint that combines Google Solar API + Groq AI
-    Returns HTML-formatted analysis for AI Consultant popup
-    """
-    print(f"[DEBUG] /api/analyze_solar endpoint called")
-    try:
-        data = request.json
-        print(f"[DEBUG] Received data: {data}")
-        lat = data.get('lat')
-        lng = data.get('lng')
-        bounds = data.get('bounds')  # {north, south, east, west}
-        
-        if not lat or not lng or not bounds:
-            return jsonify({"error": "Coordinates and bounds required"}), 400
-        
-        solar_api_key = os.getenv('GOOGLE_SOLAR_API_KEY')
-        groq_api_key = os.getenv('GROQ_API_KEY')
-        
-        if not solar_api_key or not groq_api_key:
-            return jsonify({"error": "API keys not configured"}), 500
-        
-        # Call the enhanced analysis function
-        print(f"[DEBUG] Calling analyze_solar_potential_with_ai with lat={lat}, lng={lng}, bounds={bounds}")
-        html_result, error, raw_data = analyze_solar_potential_with_ai(
-            lat, lng, bounds, solar_api_key, groq_api_key
-        )
-        
-        print(f"[DEBUG] Analysis result - error: {error}, html_result length: {len(html_result) if html_result else 0}")
-        
-        if error:
-            print(f"[DEBUG] Returning 404 with error: {error}")
-            return jsonify({"error": error}), 404
-        
-        return jsonify({
-            "analysis": html_result,
-            "coordinates": {"lat": lat, "lng": lng},
-            "building_polygon": raw_data.get("solarPotential", {}).get("roofSegmentStats", [{}])[0].get("boundingPolygon") if raw_data else None
-        })
-        
-    except Exception as e:
-        print(f"Error in solar_analysis: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+# --- Solar analysis endpoint is disabled ---
+# @app.route('/api/analyze_solar', methods=['POST'])
+# def solar_analysis():
+#     """
+#     Solar analysis endpoint that combines Google Solar API + Groq AI
+#     Returns HTML-formatted analysis for AI Consultant popup
+#     """
+#     print(f"[DEBUG] /api/analyze_solar endpoint called")
+#     try:
+#         data = request.json
+#         print(f"[DEBUG] Received data: {data}")
+#         lat = data.get('lat')
+#         lng = data.get('lng')
+#         bounds = data.get('bounds')  # {north, south, east, west}
+#         
+#         if not lat or not lng or not bounds:
+#             return jsonify({"error": "Coordinates and bounds required"}), 400
+#         
+#         solar_api_key = os.getenv('GOOGLE_SOLAR_API_KEY')
+#         groq_api_key = os.getenv('GROQ_API_KEY')
+#         
+#         if not solar_api_key or not groq_api_key:
+#             return jsonify({"error": "API keys not configured"}), 500
+#         
+#         # Call the enhanced analysis function
+#         print(f"[DEBUG] Calling analyze_solar_potential_with_ai with lat={lat}, lng={lng}, bounds={bounds}")
+#         html_result, error, raw_data = analyze_solar_potential_with_ai(
+#             lat, lng, bounds, solar_api_key, groq_api_key
+#         )
+#         
+#         print(f"[DEBUG] Analysis result - error: {error}, html_result length: {len(html_result) if html_result else 0}")
+#         
+#         if error:
+#             print(f"[DEBUG] Returning 404 with error: {error}")
+#             return jsonify({"error": error}), 404
+#         
+#         return jsonify({
+#             "analysis": html_result,
+#             "coordinates": {"lat": lat, "lng": lng},
+#             "building_polygon": raw_data.get("solarPotential", {}).get("roofSegmentStats", [{}])[0].get("boundingPolygon") if raw_data else None
+#         })
+#         
+#     except Exception as e:
+#         print(f"Error in solar_analysis: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/heat/<int:year>')
 def get_heat_layer(year):
@@ -363,6 +364,71 @@ def analyze_location():
 @app.route('/')
 def serve():
     return send_from_directory(app.static_folder, 'index.html')
+
+
+# Chatbot endpoint for AI consultant
+@app.route('/api/chatbot', methods=['POST'])
+def chatbot():
+    try:
+        data = request.json
+        question = data.get('question')
+        lat = data.get('lat')
+        lng = data.get('lng')
+        year = data.get('year', 2030)
+        trees = data.get('trees', 0)
+
+        if not question or lat is None or lng is None:
+            return jsonify({'error': 'Question, lat, and lng required'}), 400
+
+        # Predict LST for the given year and location
+        point = ee.Geometry.Point([lng, lat])
+        image = ee.ImageCollection('MODIS/061/MOD11A2') \
+            .filter(ee.Filter.date(f'{year}-01-01', f'{year}-12-31')) \
+            .select('LST_Day_1km') \
+            .mean()
+        try:
+            lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
+            if lst_value is not None and lst_value > 0:
+                temperature_k = lst_value * 0.02
+                temperature_c = temperature_k - 273.15
+            else:
+                temperature_c = None
+        except Exception as e:
+            temperature_c = None
+
+        # Simulate tree planting impact (simple model: each tree reduces LST by 0.05°C)
+        tree_impact = trees * 0.05
+        predicted_lst = temperature_c - tree_impact if temperature_c is not None else None
+
+        # Compose prompt for Groq API
+        prompt = (
+            f"User question: {question}\n"
+            f"Location: ({lat}, {lng})\n"
+            f"Year: {year}\n"
+            f"Predicted LST (before trees): {round(temperature_c,2) if temperature_c is not None else 'N/A'}°C\n"
+            f"Number of trees to plant: {trees}\n"
+            f"Predicted LST (after trees): {round(predicted_lst,2) if predicted_lst is not None else 'N/A'}°C\n"
+            "Answer the user's question using the above data, Google Earth Engine prediction, and explain the impact of tree planting on LST."
+        )
+
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            return jsonify({'error': 'GROQ_API_KEY not set'}), 500
+        client = Groq(api_key=api_key)
+        response = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.1-8b-instant",
+        )
+        answer = response.choices[0].message.content
+        return jsonify({
+            'answer': answer,
+            'predicted_lst': round(predicted_lst,2) if predicted_lst is not None else None,
+            'temperature_c': round(temperature_c,2) if temperature_c is not None else None
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Print all registered routes for debugging
