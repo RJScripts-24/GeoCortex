@@ -36,14 +36,14 @@ const Sidebar = () => {
           </div>
         ) : analysis ? (
           <div className="space-y-4">
-            <div 
-              style={{
-                color: '#d1d5db',
-                fontSize: '1rem',
-                lineHeight: '1.6'
-              }}
-              dangerouslySetInnerHTML={{ __html: analysis }} 
-            />
+            <div className="mb-4 p-3 bg-cyan-900/30 rounded-lg border border-cyan-700/30">
+              <div className="font-mono text-xs text-cyan-300">
+                <span className="font-bold">Location:</span> {analysis && analysis.match(/<div style=\"font-size:1rem;margin-bottom:0.5rem;\">(.*?)<\/div>/)?.[1]}
+              </div>
+              <div className="font-mono text-xs text-cyan-300">
+                <span className="font-bold">Coordinates:</span> {analysis && analysis.match(/<b>Coordinates:<\/b> ([^<]*)<\/div>/)?.[1]}
+              </div>
+            </div>
             
             <div className="pt-4 border-t border-white/10 mt-4">
               <button

@@ -179,16 +179,16 @@ def analyze_location():
         client = Groq(api_key=api_key)
         
         # Zone classification based on ACTUAL TEMPERATURE
-        # Updated thresholds to match real-world heat conditions
+        # Updated thresholds to match the visual heat map color gradient
         zone = None
         zone_info = None
         temp_c = temperature_c if temperature_c is not None else None
         
         if temp_c is not None:
-            if temp_c < 18:  # Very cool - water bodies, deep shade
+            if temp_c < 26:  # Cool - water bodies, deep shade, well-vegetated areas (Blue: 20-26°C)
                 zone = 1
                 zone_info = {
-                    "name": "Blue Zone (Water & Deep Shade)",
+                    "name": "Blue Zone (Cool Areas)",
                     "status": "✅ Healthy / Protected",
                     "color": "#0502ff",
                     "suggestions": [
@@ -198,7 +198,7 @@ def analyze_location():
                         "Biodiversity Check (high ecological value)."
                     ]
                 }
-            elif temp_c < 24:  # Comfortable - well-shaded urban areas
+            elif temp_c < 27.5:  # Comfortable - well-shaded urban areas (Cyan: 26-27.5°C)
                 zone = 2
                 zone_info = {
                     "name": "Cyan Zone (Comfortable Urban Areas)",
@@ -209,7 +209,7 @@ def analyze_location():
                         "Rainwater Harvesting (groundwater recharge)."
                     ]
                 }
-            elif temp_c < 28:  # Warming - transition areas with sparse vegetation
+            elif temp_c < 28.7:  # Warming - transition areas with sparse vegetation (Green: 27.5-28.7°C)
                 zone = 3
                 zone_info = {
                     "name": "Green Zone (Transition Areas)",
@@ -220,7 +220,7 @@ def analyze_location():
                         "Soil Moisture Retention (mulching, prevent drying)."
                     ]
                 }
-            elif temp_c < 34:  # Hot - roads, dense residential, parking lots
+            elif temp_c < 29.5:  # Hot - roads, dense residential, parking lots (Yellow/Orange: 28.7-29.5°C)
                 zone = 4
                 zone_info = {
                     "name": "Yellow/Orange Zone (Warning Zone)",
@@ -232,7 +232,7 @@ def analyze_location():
                         "Vertical Gardens (green walls on pillars/fences)."
                     ]
                 }
-            else:  # Extreme heat - industrial, large roofs, highways
+            else:  # Extreme heat - industrial, large roofs, highways (Red: >29.5°C)
                 zone = 5
                 zone_info = {
                     "name": "Red Zone (Critical Heat Island)",
@@ -265,7 +265,23 @@ def analyze_location():
         )
 
         # Format AI Insights with emojis, font sizes, and bold for frontend display
+        # Format AI content: bold, emojis, spacing
+        import re
         ai_content = response.choices[0].message.content
+        # Convert markdown bold to HTML bold
+        ai_content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', ai_content)
+        # Add spacing after numbered points
+        ai_content = re.sub(r'(\d+\.)', r'<br><span style="font-size:1.1rem;font-weight:bold;">\1</span>', ai_content)
+        # Add emoji for each section if not present
+        ai_content = re.sub(r'1\.', '1️⃣.', ai_content)
+        ai_content = re.sub(r'2\.', '2️⃣.', ai_content)
+        ai_content = re.sub(r'3\.', '3️⃣.', ai_content)
+        # Add extra spacing between sections
+        ai_content = ai_content.replace('<br><span', '<br><br><span')
+        # Ensure bullet points are spaced
+        ai_content = ai_content.replace('<br>\t*', '<br>&nbsp;&nbsp;• ')
+        # Remove double <br>
+        ai_content = re.sub(r'(<br>\s*){2,}', '<br><br>', ai_content)
         zone_label = zone_info['name'] if zone_info else 'Unknown Zone'
         zone_status = zone_info['status'] if zone_info else ''
         zone_color = zone_info.get('color', '#888888') if zone_info else '#888888'
@@ -278,7 +294,6 @@ def analyze_location():
         }.get(zone, '❓')
         # Compose a styled HTML block for AI Insights with color indicator
         ai_insights_html = f"""
-        <div style='font-size:1.25rem;font-weight:bold;margin-bottom:0.5rem;'>🤖 <span style='font-size:1.4rem;'>AI Insights</span></div>
         <div style='font-size:1.1rem;margin-bottom:0.5rem;'><b>Zone:</b> <span style='font-size:1.15rem;'>{zone_color_emoji} {zone_label}</span> <span style='display:inline-block;width:20px;height:20px;background:{zone_color};border-radius:50%;margin-left:8px;vertical-align:middle;border:2px solid #fff;'></span></div>
         <div style='font-size:1rem;margin-bottom:0.5rem;'><b>Status:</b> {zone_status}</div>
         <div style='font-size:1rem;line-height:1.7;margin-top:0.5rem;white-space:pre-line;'>{ai_content}</div>
