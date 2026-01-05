@@ -1,6 +1,7 @@
 import React from 'react';
 import { GlobalProvider } from './context/GlobalStore';
 import MapViewer from './components/MapViewer';
+import CesiumViewer from './components/CesiumViewer';
 import SearchBox from './components/SearchBox';
 import Sidebar from './components/Sidebar';
 import GestureCam from './components/GestureCam';
@@ -10,10 +11,12 @@ import './App.css';
 
 const App = () => {
   const [moveTo, setMoveTo] = React.useState(null);
+  const [useCesium, setUseCesium] = React.useState(false);
+  
   return (
     <GlobalProvider>
       <div className="relative w-full h-screen overflow-hidden bg-black">
-        <MapViewer moveTo={moveTo} />
+        {useCesium ? <CesiumViewer moveTo={moveTo} /> : <MapViewer moveTo={moveTo} />}
         <GestureHUD />
         <Controls />
         <GestureCam />
@@ -30,7 +33,13 @@ const App = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setUseCesium(!useCesium)}
+              className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/40 border border-cyan-400 text-cyan-400 rounded font-mono text-xs transition-all"
+            >
+              {useCesium ? '2D Maps' : 'Photorealistic 3D'}
+            </button>
             <SearchBox onSelectLocation={(loc) => setMoveTo({ lat: loc.lat, lng: loc.lon })} />
           </div>
         </nav>

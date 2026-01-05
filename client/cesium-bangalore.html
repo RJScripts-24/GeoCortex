@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoCortex - Bangalore 3D Digital Twin</title>
+    
+    <!-- CesiumJS 1.124 CDN -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: 350px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .info-panel h1 {
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #4FC3F7;
+        }
+        
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 12px;
+            color: #B0BEC5;
+        }
+        
+        .status {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status.loading {
+            color: #FFC107;
+        }
+        
+        .status.success {
+            color: #4CAF50;
+        }
+        
+        .status.error {
+            color: #F44336;
+        }
+    </style>
+</head>
+<body>
+    <div id="cesiumContainer"></div>
+    
+    <div class="info-panel">
+        <h1>GeoCortex - Bangalore 3D</h1>
+        <p><strong>Location:</strong> Vidhana Soudha, Bangalore</p>
+        <p><strong>Coordinates:</strong> 12.9797°N, 77.5913°E</p>
+        <p><strong>Technology:</strong> Google Photorealistic 3D Tiles</p>
+        <div class="status loading" id="status">
+            Loading 3D tiles...
+        </div>
+    </div>
+
+    <script>
+        // ==================== Configuration ====================
+        // Use Vite environment variable for Google Maps API key
+        const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        
+        // Bangalore Vidhana Soudha coordinates
+        const BANGALORE_LAT = 12.9797;
+        const BANGALORE_LON = 77.5913;
+        const CAMERA_HEIGHT = 500; // meters
+        const CAMERA_PITCH = -45; // degrees (overhead view)
+        
+        // ==================== Initialize Cesium Viewer ====================
+        console.log("Initializing Cesium Viewer...");
+        
+        // Set default access token (optional, but good practice)
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkN2VhMWI4MS1hYjZhLTRhOTAtYWY1NS04MWQ1NzkzNDZkODciLCJpZCI6MjU5LCJpYXQiOjE3MzYxMDQwMDB9.1234567890'; // Default token
+        
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            // Enable globe (required for imagery and terrain)
+            globe: true,
+            
+            // Disable UI widgets for clean interface
+            timeline: false,
+            animation: false,
+            baseLayerPicker: false,
+            
+            // Optional: Customize other UI elements
+            geocoder: false,
+            homeButton: true,
+            sceneModePicker: false,
+            navigationHelpButton: false,
+            fullscreenButton: true,
+            vrButton: false,
+            
+            // Scene configuration
+            skyBox: true,
+            skyAtmosphere: true,
+            
+            // Request render mode for better performance
+            requestRenderMode: false,
+            maximumRenderTimeChange: Infinity
+        });
+        // Add a base imagery layer (Bing Maps Aerial)
+        // Remove all existing imagery layers and add Bing Maps Aerial as the base layer
+        viewer.imageryLayers.removeAll();
+        viewer.imageryLayers.addImageryProvider(
+            new Cesium.IonImageryProvider({ assetId: 2 }) // Bing Maps Aerial
+        );
+        
+        // ==================== Scene Configuration ====================
+        const scene = viewer.scene;
+        
+        // Enable lighting for realistic shadows
+        if (scene.globe) {
+            scene.globe.enableLighting = false; // Disable lighting to ensure globe is visible
+        }
+        
+        // Set current date/time for real-time shadows
+        viewer.clock.currentTime = Cesium.JulianDate.now();
+        
+        // Configure sun position for shadow analysis
+        scene.light = new Cesium.SunLight();
+        
+        // High-quality rendering settings
+        scene.highDynamicRange = true;
+        scene.fog.enabled = false;
+        
+        // ==================== Load Google Photorealistic 3D Tiles ====================
+        console.log("Loading Google Photorealistic 3D Tiles...");
+        
+        const statusElement = document.getElementById('status');
+        
+        async function loadGooglePhotorealistic3DTiles() {
+            try {
+                statusElement.textContent = "Creating 3D tileset...";
+                statusElement.className = "status loading";
+                
+                // Create Google Photorealistic 3D Tileset
+                const tileset = await Cesium.createGooglePhotorealistic3DTileset({
+                    key: GOOGLE_API_KEY
+                });
+                
+                console.log("Tileset created successfully:", tileset);
+                
+                // Explicitly add tileset to the scene
+                const addedTileset = viewer.scene.primitives.add(tileset);
+                
+                console.log("Tileset added to scene:", addedTileset);
+                
+                statusElement.textContent = "3D tiles loaded successfully!";
+                statusElement.className = "status success";
+                
+                // Handle tileset loading events
+                tileset.readyPromise.then(() => {
+                    console.log("Tileset is ready");
+                    
+                    // Fly to Bangalore after tileset is ready
+                    flyToBangalore();
+                }).catch((error) => {
+                    console.error("Tileset ready promise error:", error);
+                    statusElement.textContent = `Tileset error: ${error.message}`;
+                    statusElement.className = "status error";
+                });
+                
+            } catch (error) {
+                console.error("Error loading 3D tiles:", error);
+                statusElement.textContent = `Error: ${error.message}`;
+                statusElement.className = "status error";
+                
+                // Show helpful error message
+                if (error.message.includes("API key") || error.message.includes("key")) {
+                    statusElement.textContent = "Error: Invalid API key. Please set a valid Google Maps API key.";
+                }
+            }
+        }
+        
+        // ==================== Camera Configuration ====================
+        function flyToBangalore() {
+            console.log("Flying to Bangalore...");
+            
+            // Calculate destination with proper orientation
+            const destination = Cesium.Cartesian3.fromDegrees(
+                BANGALORE_LON, 
+                BANGALORE_LAT, 
+                CAMERA_HEIGHT
+            );
+            
+            // Fly to Bangalore with smooth animation
+            viewer.camera.flyTo({
+                destination: destination,
+                orientation: {
+                    heading: Cesium.Math.toRadians(0), // North
+                    pitch: Cesium.Math.toRadians(CAMERA_PITCH), // -45 degrees
+                    roll: 0.0
+                },
+                duration: 3.0, // 3 seconds animation
+                complete: () => {
+                    console.log("Camera flight completed");
+                    statusElement.textContent = "Ready! Explore the 3D city.";
+                }
+            });
+        }
+        
+        // ==================== Initialize Application ====================
+        // Load the 3D tiles
+        loadGooglePhotorealistic3DTiles();
+        
+        // Set home button to return to Bangalore
+        viewer.homeButton.viewModel.command.beforeExecute.addEventListener((e) => {
+            e.cancel = true;
+            flyToBangalore();
+        });
+        
+        // ==================== Debug Information ====================
+        console.log("=== GeoCortex Initialization Complete ===");
+        console.log("Scene primitives:", scene.primitives.length);
+        console.log("Camera position:", viewer.camera.position);
+        console.log("Current time:", Cesium.JulianDate.toDate(viewer.clock.currentTime));
+        
+        // Monitor tileset loading progress
+        setInterval(() => {
+            if (scene.primitives.length > 0) {
+                const tileset = scene.primitives.get(0);
+                if (tileset.tilesLoaded !== undefined) {
+                    console.log(`Tiles loaded: ${tileset.tilesLoaded}`);
+                }
+            }
+        }, 5000); // Log every 5 seconds
+        
+    </script>
+</body>
+</html>
