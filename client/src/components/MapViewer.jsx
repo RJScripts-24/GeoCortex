@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { BitmapLayer } from "@deck.gl/layers";
@@ -9,14 +8,22 @@ import html2canvas from 'html2canvas';
 
 
 
-const MapViewer = ({ moveTo }) => {
-  const mapRef = useRef(null);
-  const overlayRef = useRef(null);
-  const [tileUrl, setTileUrl] = useState(null);
-  const [menuPos, setMenuPos] = useState(null);
-  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
-  const [clickedLatLng, setClickedLatLng] = useState(null);
-  const [mapInstance, setMapInstance] = useState(null);
+const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange }) => {
+    // Planning Mode selection state
+    const [selectingRegion, setSelectingRegion] = useState(false);
+    const selectingRegionRef = useRef(false);
+    useEffect(() => { selectingRegionRef.current = selectingRegion; }, [selectingRegion]);
+    const [regionRect, setRegionRect] = useState(null);
+    const regionOverlayRef = useRef(null);
+    const mapRef = useRef(null);
+    const overlayRef = useRef(null);
+    const [tileUrl, setTileUrl] = useState(null);
+    const [menuPos, setMenuPos] = useState(null);
+    const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
+    const [clickedLatLng, setClickedLatLng] = useState(null);
+    const [mapInstance, setMapInstance] = useState(null);
+    const isUpdatingRef = useRef(false);
+    const lastProgrammaticUpdateRef = useRef(0);
 
 
   // Fetch heatmap tile URL when year changes (for thermal view)
@@ -37,36 +44,169 @@ const MapViewer = ({ moveTo }) => {
   useEffect(() => {
     if (!window.google || !mapRef.current || mapInstance) return;
     const map = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 12.9716, lng: 77.5946 },
-      zoom: 10,
+      center: { lat: mapView.lat, lng: mapView.lng },
+      zoom: mapView.zoom,
       tilt: 0,
       heading: 0,
       mapId: "3e9ab3019d1723b1f60010f9",
       disableDefaultUI: true,
+      gestureHandling: 'greedy',
     });
-    
-    // Add right-click listener using Google Maps API
-    map.addListener('contextmenu', (e) => {
-      if (e.latLng && e.domEvent) {
-        setClickedLatLng({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-        // Use the actual mouse event for pixel position
-        setMenuPos({ x: e.domEvent.clientX, y: e.domEvent.clientY });
-      }
-    });
-
     setMapInstance(map);
     const overlay = new GoogleMapsOverlay({ layers: [] });
     overlay.setMap(map);
     overlayRef.current = overlay;
-  }, [mapInstance]);
 
-  // Move map to searched location
+    // Region selection logic
+    let startLatLng = null;
+    let regionRectObj = null;
+    let isSelecting = false;
+    let mouseDownButton = null;
+
+    map.addListener('mousedown', (e) => {
+      if (selectingRegionRef.current && e.domEvent.button === 2) {
+        console.log('[PlanningMode] Right mouse down: Start region selection');
+        // Prevent default right-click behavior and stop map panning
+        e.domEvent.preventDefault();
+        e.domEvent.stopPropagation();
+        e.stop();
+        // Disable map dragging during selection
+        map.setOptions({ draggable: false, zoomControl: false });
+        isSelecting = true;
+        mouseDownButton = 2;
+        startLatLng = e.latLng;
+        if (regionRectObj) regionRectObj.setMap(null);
+        regionRectObj = new window.google.maps.Rectangle({
+          strokeColor: '#FFD600',
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+          fillColor: '#FFD600',
+          fillOpacity: 0.3,
+          map,
+          bounds: new window.google.maps.LatLngBounds(startLatLng, startLatLng),
+        });
+        regionOverlayRef.current = regionRectObj;
+      } else if (!selectingRegionRef.current && e.domEvent.button === 0) {
+        // Left mouse button: allow panning
+        mouseDownButton = 0;
+        isSelecting = false;
+        console.log('[PlanningMode] Left mouse down: Pan map');
+      } else {
+        console.log('[PlanningMode] Mouse down ignored. selectingRegion:', selectingRegionRef.current, 'button:', e.domEvent.button);
+      }
+    });
+    
+    map.addListener('mousemove', (e) => {
+      if (!isSelecting || !startLatLng || !regionRectObj) {
+        return;
+      }
+      const endLatLng = e.latLng;
+      const bounds = new window.google.maps.LatLngBounds(startLatLng, endLatLng);
+      regionRectObj.setBounds(bounds);
+      console.log('[PlanningMode] Region selection: updating rectangle bounds');
+    });
+    
+    map.addListener('mouseup', (e) => {
+      if (!isSelecting || !startLatLng || !regionRectObj) {
+        return;
+      }
+      console.log('[PlanningMode] Mouse up detected, mouseDownButton:', mouseDownButton);
+      if (mouseDownButton !== 2) {
+        console.log('[PlanningMode] mouseUpHandler: Not right mouse button, ignoring');
+        isSelecting = false;
+        mouseDownButton = null;
+        return;
+      }
+      const endLatLng = e.latLng;
+      const bounds = new window.google.maps.LatLngBounds(startLatLng, endLatLng);
+      regionRectObj.setBounds(bounds);
+      // Calculate bounds
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      // Re-enable map dragging
+      map.setOptions({ draggable: true, zoomControl: false });
+      // Clean up
+      setSelectingRegion(false);
+      isSelecting = false;
+      mouseDownButton = null;
+      if (typeof setPlanningTrigger === 'function') setPlanningTrigger(false);
+      console.log('[PlanningMode] Region selected. Redirecting to planning:', ne.lat(), sw.lat(), ne.lng(), sw.lng());
+      window.location.href = `/planning?n=${ne.lat()}&s=${sw.lat()}&e=${ne.lng()}&w=${sw.lng()}`;
+    });
+  }, [mapInstance]);
+  // Listen for planningTrigger prop
   useEffect(() => {
-    if (moveTo && mapInstance && moveTo.lat && moveTo.lng) {
-      mapInstance.setCenter({ lat: parseFloat(moveTo.lat), lng: parseFloat(moveTo.lng) });
-      mapInstance.setZoom(14);
+    if (typeof planningTrigger !== 'undefined' && planningTrigger) {
+      setSelectingRegion(true);
+      console.log('[PlanningMode] planningTrigger activated, enabling region selection');
     }
-  }, [moveTo, mapInstance]);
+  }, [planningTrigger]);
+
+  // Update map when mapView changes (from external source or 3D map)
+  useEffect(() => {
+    if (!mapInstance || !mapView) return;
+    
+    // Validate that lat and lng are valid numbers
+    const lat = parseFloat(mapView.lat);
+    const lng = parseFloat(mapView.lng);
+    const zoom = parseFloat(mapView.zoom);
+    
+    if (!isFinite(lat) || !isFinite(lng) || !isFinite(zoom)) {
+      console.warn('Invalid mapView values:', { lat: mapView.lat, lng: mapView.lng, zoom: mapView.zoom });
+      return;
+    }
+    
+    isUpdatingRef.current = true;
+    lastProgrammaticUpdateRef.current = Date.now();
+    const currentCenter = mapInstance.getCenter();
+    const currentZoom = mapInstance.getZoom();
+    
+    // Only update if values actually changed
+    const centerChanged = !currentCenter || 
+      Math.abs(currentCenter.lat() - lat) > 0.0001 || 
+      Math.abs(currentCenter.lng() - lng) > 0.0001;
+    const zoomChanged = currentZoom !== zoom;
+    
+    if (centerChanged || zoomChanged) {
+      mapInstance.setCenter({ lat, lng });
+      mapInstance.setZoom(zoom);
+    }
+    
+    setTimeout(() => {
+      isUpdatingRef.current = false;
+    }, 100);
+  }, [mapView, mapInstance]);
+
+  // Report view changes to parent (for syncing with 3D map)
+  useEffect(() => {
+    if (!mapInstance || !onViewChange) return;
+    let debounceTimeout = null;
+    
+    const handleIdle = () => {
+      // Ignore idle events that occur within 300ms of a programmatic update
+      const now = Date.now();
+      if (isUpdatingRef.current || now - lastProgrammaticUpdateRef.current < 300) return;
+
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+        const center = mapInstance.getCenter();
+        const zoom = mapInstance.getZoom();
+        onViewChange({
+          lat: center.lat(),
+          lng: center.lng(),
+          zoom
+        });
+      }, 300);
+    };
+
+    mapInstance.addListener('idle', handleIdle);
+    return () => {
+      clearTimeout(debounceTimeout);
+      if (window.google && window.google.maps && window.google.maps.event) {
+        window.google.maps.event.clearListeners(mapInstance, 'idle');
+      }
+    };
+  }, [mapInstance, onViewChange]);
 
   // Update map layers based on activeLayer
   useEffect(() => {
@@ -171,14 +311,14 @@ const MapViewer = ({ moveTo }) => {
   }, [menuPos]);
 
   return (
-    <>
+    <div className="w-full h-full border-8 border-black rounded-xl box-border" style={{ boxSizing: 'border-box', position: 'relative' }}>
       <div
         ref={mapRef}
         style={{
           position: "absolute",
           inset: 0,
-          width: "100vw",
-          height: "100vh",
+          width: "100%",
+          height: "100%",
           background: "black",
         }}
       />
@@ -214,7 +354,7 @@ const MapViewer = ({ moveTo }) => {
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 };
 

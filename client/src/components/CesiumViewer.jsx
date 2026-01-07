@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 import { fetchHeatLayer } from '../services/api';
@@ -7,9 +6,116 @@ import EnergyModeCesium from './EnergyModeCesium.jsx';
 
 
 
-const CesiumViewer = ({ moveTo }) => {
+const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigger }) => {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
+  const isUpdatingRef = useRef(false);
+  // Planning Mode selection state
+  const [planningMode, setPlanningMode] = useState(false);
+  const selectionRef = useRef({ active: false, start: null, end: null, rectEntity: null });
+  const navigate = window.reactRouterNavigate || ((url) => { window.location.href = url; });
+  
+  // Helper function: Convert Google Maps zoom to Cesium height
+  // Using empirical formula that matches Google Maps field of view
+  const zoomToHeight = (zoom) => {
+    // Clamp zoom to valid range
+    const clampedZoom = Math.max(0, Math.min(21, zoom));
+    // Empirical formula: provides accurate match with Google Maps
+    let height = 591657550.5 / Math.pow(2, clampedZoom);
+    // Clamp height to safe range (50m to 50M meters)
+    height = Math.max(50, Math.min(50000000, height));
+    return height;
+  };
+  
+  // Helper function: Calculate optimal pitch based on height to avoid terrain collisions
+  const calculatePitch = (height) => {
+    // Use top-down view for better alignment with 2D map
+    // At very low heights, use steeper angle to avoid collisions
+    if (height < 300) {
+      return -89.5; // Nearly straight down
+    } else if (height < 1000) {
+      return -89; // Top-down
+    } else {
+      return -89; // Keep top-down for consistent view alignment
+    }
+  };
+  
+  // Helper function: Convert Cesium height to Google Maps zoom
+  const heightToZoom = (height) => {
+    // Clamp height to safe range
+    const clampedHeight = Math.max(50, Math.min(50000000, height));
+    const zoom = Math.log2(591657550.5 / clampedHeight);
+    // Clamp zoom to valid range
+    return Math.max(0, Math.min(21, Math.round(zoom)));
+  };
+
+  // Listen for planningTrigger prop
+  useEffect(() => {
+    if (typeof planningTrigger !== 'undefined' && planningTrigger) {
+      enableRegionSelection();
+    }
+    // eslint-disable-next-line
+  }, [planningTrigger]);
+    // Enable region selection for planning mode
+    const enableRegionSelection = () => {
+      if (!viewerRef.current || !window.Cesium || !containerRef.current) return;
+      const Cesium = window.Cesium;
+      const viewer = viewerRef.current;
+      setPlanningMode(true);
+      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+      let startCartographic = null;
+      let rectEntity = null;
+      handler.setInputAction((click) => {
+        const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        if (!cartesian) return;
+        startCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        selectionRef.current.active = true;
+        selectionRef.current.start = startCartographic;
+        // Draw initial rectangle entity
+        if (rectEntity) viewer.entities.remove(rectEntity);
+        rectEntity = viewer.entities.add({
+          rectangle: {
+            coordinates: Cesium.Rectangle.fromCartographicArray([startCartographic, startCartographic]),
+            material: Cesium.Color.YELLOW.withAlpha(0.4),
+            outline: true,
+            outlineColor: Cesium.Color.YELLOW,
+          },
+        });
+        selectionRef.current.rectEntity = rectEntity;
+      }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+
+      handler.setInputAction((movement) => {
+        if (!selectionRef.current.active || !startCartographic) return;
+        const cartesian = viewer.scene.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid);
+        if (!cartesian) return;
+        const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        selectionRef.current.end = endCartographic;
+        // Update rectangle entity
+        if (rectEntity) {
+          rectEntity.rectangle.coordinates = Cesium.Rectangle.fromCartographicArray([startCartographic, endCartographic]);
+        }
+      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+      handler.setInputAction((click) => {
+        if (!selectionRef.current.active || !startCartographic) return;
+        const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        if (!cartesian) return;
+        const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        selectionRef.current.end = endCartographic;
+        // Finalize rectangle
+        const north = Math.max(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
+        const south = Math.min(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
+        const east = Math.max(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
+        const west = Math.min(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
+        // Remove rectangle entity
+        if (rectEntity) viewer.entities.remove(rectEntity);
+        handler.destroy();
+        setPlanningMode(false);
+        // Redirect to planning mode
+        if (typeof setPlanningTrigger === 'function') setPlanningTrigger(false);
+        navigate(`/planning?n=${north}&s=${south}&e=${east}&w=${west}`);
+      }, Cesium.ScreenSpaceEventType.RIGHT_UP);
+    };
   const [menuPos, setMenuPos] = useState(null);
   const [clickedLatLng, setClickedLatLng] = useState(null);
   const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
@@ -171,24 +277,90 @@ const CesiumViewer = ({ moveTo }) => {
     };
   }, []);
 
-  // Fly to searched location if moveTo changes
+  // Update Cesium camera when mapView changes (from external source or 2D map)
   useEffect(() => {
-    if (!viewerRef.current || !window.Cesium || !moveTo || !moveTo.lat || !moveTo.lng) return;
+    if (!viewerRef.current || !window.Cesium || !mapView) return;
+    
     const Cesium = window.Cesium;
-    viewerRef.current.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        parseFloat(moveTo.lng),
-        parseFloat(moveTo.lat),
-        1500
-      ),
-      orientation: {
-        heading: Cesium.Math.toRadians(0),
-        pitch: Cesium.Math.toRadians(-45),
-        roll: 0
-      },
-      duration: 2
-    });
-  }, [moveTo]);
+    const viewer = viewerRef.current;
+    
+    // Validate mapView values
+    if (!mapView.lat || !mapView.lng || mapView.zoom === undefined) return;
+    if (Math.abs(mapView.lat) > 90 || Math.abs(mapView.lng) > 180) return;
+    
+    isUpdatingRef.current = true;
+    let height = zoomToHeight(mapView.zoom);
+    let pitch = calculatePitch(height);
+    // At very low heights, force top-down and add small offset for safety
+    if (height < 1000) {
+      pitch = -89;
+      height = height + 20; // small safety offset
+    }
+    console.log('[Cesium Sync] Setting camera height:', height, 'pitch:', pitch, 'for zoom:', mapView.zoom);
+    
+    try {
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(
+          mapView.lng,
+          mapView.lat,
+          height
+        ),
+        orientation: {
+          heading: Cesium.Math.toRadians(0),
+          pitch: Cesium.Math.toRadians(pitch),
+          roll: 0
+        }
+      });
+    } catch (error) {
+      console.error('[Cesium Sync] Error setting Cesium camera at height:', height, 'zoom:', mapView.zoom, error);
+    }
+    
+    setTimeout(() => {
+      isUpdatingRef.current = false;
+    }, 150);
+  }, [mapView]);
+
+  // ONE-WAY SYNC: Disabled 3D → 2D sync (only 2D → 3D is active)
+  // The 3D map will follow the 2D map, but not vice versa
+  // useEffect(() => {
+  //   if (!viewerRef.current || !onViewChange || !window.Cesium) return;
+  //   
+  //   const Cesium = window.Cesium;
+  //   const viewer = viewerRef.current;
+  //   let debounceTimeout = null;
+  //   
+  //   const reportView = () => {
+  //     if (isUpdatingRef.current) return;
+  //     
+  //     clearTimeout(debounceTimeout);
+  //     debounceTimeout = setTimeout(() => {
+  //       try {
+  //         const position = viewer.camera.positionCartographic;
+  //         if (!position) return;
+  //         
+  //         const lat = Cesium.Math.toDegrees(position.latitude);
+  //         const lng = Cesium.Math.toDegrees(position.longitude);
+  //         const height = position.height;
+  //         
+  //         // Validate values before reporting
+  //         if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+  //         if (height < 100 || height > 50000000) return;
+  //         
+  //         const zoom = heightToZoom(height);
+  //         
+  //         onViewChange({ lat, lng, zoom });
+  //       } catch (error) {
+  //         console.error('Error reporting Cesium view:', error);
+  //       }
+  //     }, 300);
+  //   };
+  //   
+  //   viewer.camera.moveEnd.addEventListener(reportView);
+  //   return () => {
+  //     clearTimeout(debounceTimeout);
+  //     viewer.camera.moveEnd.removeEventListener(reportView);
+  //   };
+  // }, [onViewChange]);
 
 
   const initializeCesium = async () => {
@@ -302,31 +474,33 @@ const CesiumViewer = ({ moveTo }) => {
   };
 
   const flyToBangalore = (viewer, Cesium) => {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(77.5946, 12.9716, 1500),
+    // Will be set by mapView prop, so just set a default safe view
+    let height = zoomToHeight(mapView.zoom);
+    let pitch = calculatePitch(height);
+    if (height < 1000) {
+      pitch = -89;
+      height = height + 20;
+    }
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(mapView.lng, mapView.lat, height),
       orientation: {
         heading: Cesium.Math.toRadians(0),
-        pitch: Cesium.Math.toRadians(-45),
+        pitch: Cesium.Math.toRadians(pitch),
         roll: 0
-      },
-      duration: 3,
-      complete: () => console.log('✓ Camera positioned over Bangalore')
+      }
     });
+    console.log('✓ Camera positioned at:', mapView.lat, mapView.lng, 'height:', height.toFixed(0), 'm', 'pitch:', pitch);
   };
 
   return (
-    <div className="relative w-full h-screen">
-      <div ref={containerRef} className="w-full h-full" />
+    <div className="relative w-full h-full">
+      <div
+        ref={containerRef}
+        className="w-full h-full border-8 border-black rounded-xl box-border"
+        style={{ boxSizing: 'border-box', marginTop: '0px' }}
+      />
       {/* Energy Mode Rectangle & Context Menu */}
       <EnergyModeCesium viewer={viewerRef.current} />
-      {/* Info Panel */}
-      <div className="absolute top-4 left-4 bg-black/80 text-white p-4 rounded-lg max-w-xs z-10">
-        <h2 className="text-lg font-bold text-green-400 mb-2">🌍 Bangalore Digital Twin</h2>
-        <p className="text-sm mb-1"><strong>Photorealistic 3D Tiles</strong></p>
-        <p className="text-xs mb-1">Location: 12.9716°N, 77.5946°E</p>
-        <p className="text-xs mb-1">Real-world lighting enabled</p>
-        <p className="text-xs">Use mouse to navigate</p>
-      </div>
       {/* Custom context menu */}
       {menuPos && (
         <div
