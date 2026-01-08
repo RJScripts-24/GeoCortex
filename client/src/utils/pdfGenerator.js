@@ -44,14 +44,14 @@ const fetchImageAsBase64 = async (url) => {
 export const generatePDF = async (analysisText, location, mapImage, chatMessages = []) => {
   const doc = new jsPDF();
   let y = 20;
-  
+
   // Title
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(6, 182, 212);
   doc.text("GEOCORTEX AI ANALYSIS REPORT", 20, y);
   y += 12;
-  
+
   // Metadata
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -60,24 +60,24 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
   y += 5;
   doc.text("Source: Landsat 9 Satellite Data", 20, y);
   y += 8;
-  
+
   // Line
   doc.setDrawColor(6, 182, 212);
   doc.line(20, y, 190, y);
   y += 10;
-  
+
   // Add map image using Google Static Maps API
   if (location) {
     try {
       const zoom = 14;
       const size = '600x400';
       const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${location.lat},${location.lng}&zoom=${zoom}&size=${size}&maptype=satellite&markers=color:red%7C${location.lat},${location.lng}&key=${GOOGLE_MAPS_API_KEY}`;
-      
+
       // Fetch and convert image to base64
       const imageData = await fetchImageAsBase64(mapUrl);
       doc.addImage(imageData, 'JPEG', 20, y, 170, 100);
       y += 105;
-      
+
       doc.setFontSize(8);
       doc.setTextColor(100);
       doc.setFont("helvetica", "italic");
@@ -89,19 +89,19 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       // Continue without map if it fails
     }
   }
-  
+
   // Parse and format analysis text
   const cleaned = cleanEmojis(analysisText || "No data");
   const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l);
-  
+
   doc.setTextColor(0);
-  
+
   for (const line of lines) {
     if (y > 270) {
       doc.addPage();
       y = 20;
     }
-    
+
     // Title: Urban Heat Analysis
     if (line.includes('Urban Heat Analysis')) {
       y += 3;
@@ -111,7 +111,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       y += 10;
       continue;
     }
-    
+
     // Location section
     if (line.startsWith('Location:')) {
       doc.setFont("helvetica", "bold");
@@ -126,7 +126,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       y += wrapped.length * 5 + 3;
       continue;
     }
-    
+
     // Coordinates
     if (line.includes('Coordinates:')) {
       doc.setFontSize(9);
@@ -136,7 +136,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       doc.setTextColor(0);
       continue;
     }
-    
+
     // Temperature
     if (line.includes('Land Surface Temperature:')) {
       y += 2;
@@ -153,7 +153,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       doc.setFont("helvetica", "normal");
       continue;
     }
-    
+
     // Zone/Status
     if (line.includes('Zone:') || line.includes('Status:')) {
       doc.setFontSize(10);
@@ -161,7 +161,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       y += 6;
       continue;
     }
-    
+
     // AI Insights
     if (line.includes('AI Insights:')) {
       y += 3;
@@ -173,7 +173,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       doc.setFontSize(10);
       continue;
     }
-    
+
     // Numbered items (1. 2. 3.)
     const numMatch = line.match(/^(\d+)\.\s*(.+)$/);
     if (numMatch) {
@@ -186,7 +186,7 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       doc.setFont("helvetica", "normal");
       continue;
     }
-    
+
     // Bullets
     if (line.startsWith('*')) {
       const text = line.substring(1).trim();
@@ -197,14 +197,14 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
       y += wrapped.length * 4.5 + 2;
       continue;
     }
-    
+
     // Regular text
     doc.setFontSize(10);
     const wrapped = doc.splitTextToSize(line, 170);
     doc.text(wrapped, 20, y);
     y += wrapped.length * 5 + 3;
   }
-  
+
   // Chatbot Conversation Section
   if (chatMessages && chatMessages.length > 0) {
     if (y > 250) {
@@ -238,4 +238,146 @@ export const generatePDF = async (analysisText, location, mapImage, chatMessages
   doc.text("CONFIDENTIAL - GEOCORTEX COMMAND CENTER", 105, 285, { align: "center" });
 
   doc.save('GeoCortex_Report.pdf');
+};
+
+export const generatePlanningPDF = async (data, mapImage) => {
+  const doc = new jsPDF();
+  let y = 20;
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(6, 182, 212);
+  doc.text("URBAN PLANNING & IMPACT REPORT", 105, y, { align: "center" });
+  y += 15;
+
+  // Metadata
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, y);
+  y += 6;
+  doc.text("Source: GeoCortex Planning Simulation Engine", 20, y);
+  y += 10;
+
+  // Line
+  doc.setDrawColor(6, 182, 212);
+  doc.setLineWidth(0.5);
+  doc.line(20, y, 190, y);
+  y += 15;
+
+  // 1. Snapshot
+  if (mapImage) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("1. Planned Layout Snapshot", 20, y);
+    y += 10;
+    try {
+      doc.addImage(mapImage, 'PNG', 20, y, 170, 95); // reduced height slightly
+      y += 105;
+    } catch (err) {
+      console.error("Error adding map image to PDF", err);
+      doc.text("(Map Snapshot Unavailable)", 20, y);
+      y += 20;
+    }
+  }
+
+  // 2. Executive Summary - Impact Table
+  if (y > 220) { doc.addPage(); y = 20; }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("2. Executive Impact Summary", 20, y);
+  y += 10;
+
+  // Draw a summary box
+  doc.setFillColor(245, 247, 250);
+  doc.roundedRect(20, y, 170, 45, 3, 3, 'F');
+
+  doc.setFontSize(11);
+  doc.setTextColor(60);
+  doc.text("Baseline Land Surface Temp (LST):", 30, y + 12);
+  doc.text("Projected New LST:", 30, y + 24);
+  doc.text("Net Temperature Change:", 30, y + 36);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(0);
+  doc.text(`${data.base_temp?.toFixed(2) || 'N/A'} °C`, 140, y + 12);
+  doc.text(`${data.projected_temp?.toFixed(2) || 'N/A'} °C`, 140, y + 24);
+
+  const change = data.net_change || 0;
+  const color = change < 0 ? [34, 197, 94] : (change > 0 ? [239, 68, 68] : [100, 116, 139]);
+  doc.setTextColor(...color);
+  doc.text(`${change > 0 ? '+' : ''}${change.toFixed(2)} °C`, 140, y + 36);
+
+  y += 60;
+
+  // 3. Infrastructure Breakdown
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("3. Infrastructure Breakdown", 20, y);
+  y += 10;
+
+  const items = data.item_summary || {};
+  let xOffset = 20;
+  Object.entries(items).forEach(([key, count]) => {
+    doc.setFillColor(240, 249, 255);
+    doc.rect(xOffset, y, 40, 25, 'F');
+    doc.setFontSize(16);
+    doc.setTextColor(6, 182, 212);
+    doc.text(count.toString(), xOffset + 20, y + 12, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.text(key, xOffset + 20, y + 20, { align: 'center' });
+    xOffset += 50;
+  });
+  y += 40;
+
+  // 4. AI Consultant Insights (Cleaned)
+  if (y > 220) { doc.addPage(); y = 20; }
+
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("4. AI Consultant Analysis", 20, y);
+  y += 10;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+
+  const aiText = data.ai_report_text || "No insights available.";
+  const cleanText = cleanEmojis(aiText); // Remove emojis for PDF
+  const lines = cleanText.split('\n').filter(l => l.trim().length > 0);
+
+  lines.forEach(line => {
+    if (y > 270) { doc.addPage(); y = 20; }
+
+    // Check for bold markers from AI **text**
+    if (line.includes('**')) {
+      line = line.replace(/\*\*/g, '');
+      doc.setFont("helvetica", "bold");
+    } else {
+      doc.setFont("helvetica", "normal");
+    }
+
+    // Check for headers (numbered items)
+    if (line.match(/^\d+\./)) {
+      y += 4;
+      doc.setFont("helvetica", "bold");
+    }
+
+    const wrapped = doc.splitTextToSize(line, 170);
+    doc.text(wrapped, 20, y);
+    y += wrapped.length * 5 + 2;
+  });
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text("CONFIDENTIAL - GEOCORTEX URBAN PLANNING SIMULATION", 105, 285, { align: "center" });
+
+  doc.save('GeoCortex_Planning_Report.pdf');
 };

@@ -4,6 +4,9 @@ import { fetchHeatLayer } from '../services/api';
 import html2canvas from 'html2canvas';
 import EnergyModeCesium from './EnergyModeCesium.jsx';
 
+// Minimum safe camera height to prevent 3D tileset crashes
+const MIN_SAFE_HEIGHT = 800; // meters
+
 
 
 const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigger }) => {
@@ -14,7 +17,9 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
   const [planningMode, setPlanningMode] = useState(false);
   const selectionRef = useRef({ active: false, start: null, end: null, rectEntity: null });
   const navigate = window.reactRouterNavigate || ((url) => { window.location.href = url; });
-  
+  // Zoom limit notification state
+  const [showZoomLimitPopup, setShowZoomLimitPopup] = useState(false);
+
   // Helper function: Convert Google Maps zoom to Cesium height
   // Using empirical formula that matches Google Maps field of view
   const zoomToHeight = (zoom) => {
@@ -26,7 +31,7 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
     height = Math.max(50, Math.min(50000000, height));
     return height;
   };
-  
+
   // Helper function: Calculate optimal pitch based on height to avoid terrain collisions
   const calculatePitch = (height) => {
     // Use top-down view for better alignment with 2D map
@@ -39,7 +44,7 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
       return -89; // Keep top-down for consistent view alignment
     }
   };
-  
+
   // Helper function: Convert Cesium height to Google Maps zoom
   const heightToZoom = (height) => {
     // Clamp height to safe range
@@ -56,127 +61,127 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
     }
     // eslint-disable-next-line
   }, [planningTrigger]);
-    // Enable region selection for planning mode
-    const enableRegionSelection = () => {
-      if (!viewerRef.current || !window.Cesium || !containerRef.current) return;
-      const Cesium = window.Cesium;
-      const viewer = viewerRef.current;
-      setPlanningMode(true);
-      const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-      let startCartographic = null;
-      let rectEntity = null;
-      handler.setInputAction((click) => {
-        const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
-        if (!cartesian) return;
-        startCartographic = Cesium.Cartographic.fromCartesian(cartesian);
-        selectionRef.current.active = true;
-        selectionRef.current.start = startCartographic;
-        // Draw initial rectangle entity
-        if (rectEntity) viewer.entities.remove(rectEntity);
-        rectEntity = viewer.entities.add({
-          rectangle: {
-            coordinates: Cesium.Rectangle.fromCartographicArray([startCartographic, startCartographic]),
-            material: Cesium.Color.YELLOW.withAlpha(0.4),
-            outline: true,
-            outlineColor: Cesium.Color.YELLOW,
-          },
-        });
-        selectionRef.current.rectEntity = rectEntity;
-      }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+  // Enable region selection for planning mode
+  const enableRegionSelection = () => {
+    if (!viewerRef.current || !window.Cesium || !containerRef.current) return;
+    const Cesium = window.Cesium;
+    const viewer = viewerRef.current;
+    setPlanningMode(true);
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    let startCartographic = null;
+    let rectEntity = null;
+    handler.setInputAction((click) => {
+      const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+      if (!cartesian) return;
+      startCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+      selectionRef.current.active = true;
+      selectionRef.current.start = startCartographic;
+      // Draw initial rectangle entity
+      if (rectEntity) viewer.entities.remove(rectEntity);
+      rectEntity = viewer.entities.add({
+        rectangle: {
+          coordinates: Cesium.Rectangle.fromCartographicArray([startCartographic, startCartographic]),
+          material: Cesium.Color.YELLOW.withAlpha(0.4),
+          outline: true,
+          outlineColor: Cesium.Color.YELLOW,
+        },
+      });
+      selectionRef.current.rectEntity = rectEntity;
+    }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
 
-      handler.setInputAction((movement) => {
-        if (!selectionRef.current.active || !startCartographic) return;
-        const cartesian = viewer.scene.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid);
-        if (!cartesian) return;
-        const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
-        selectionRef.current.end = endCartographic;
-        // Update rectangle entity
-        if (rectEntity) {
-          rectEntity.rectangle.coordinates = Cesium.Rectangle.fromCartographicArray([startCartographic, endCartographic]);
-        }
-      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    handler.setInputAction((movement) => {
+      if (!selectionRef.current.active || !startCartographic) return;
+      const cartesian = viewer.scene.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid);
+      if (!cartesian) return;
+      const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+      selectionRef.current.end = endCartographic;
+      // Update rectangle entity
+      if (rectEntity) {
+        rectEntity.rectangle.coordinates = Cesium.Rectangle.fromCartographicArray([startCartographic, endCartographic]);
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
-      handler.setInputAction((click) => {
-        if (!selectionRef.current.active || !startCartographic) return;
-        const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
-        if (!cartesian) return;
-        const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
-        selectionRef.current.end = endCartographic;
-        // Finalize rectangle
-        const north = Math.max(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
-        const south = Math.min(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
-        const east = Math.max(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
-        const west = Math.min(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
-        // Remove rectangle entity
-        if (rectEntity) viewer.entities.remove(rectEntity);
-        handler.destroy();
-        setPlanningMode(false);
-        // Redirect to planning mode
-        if (typeof setPlanningTrigger === 'function') setPlanningTrigger(false);
-        navigate(`/planning?n=${north}&s=${south}&e=${east}&w=${west}`);
-      }, Cesium.ScreenSpaceEventType.RIGHT_UP);
-    };
+    handler.setInputAction((click) => {
+      if (!selectionRef.current.active || !startCartographic) return;
+      const cartesian = viewer.scene.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+      if (!cartesian) return;
+      const endCartographic = Cesium.Cartographic.fromCartesian(cartesian);
+      selectionRef.current.end = endCartographic;
+      // Finalize rectangle
+      const north = Math.max(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
+      const south = Math.min(startCartographic.latitude, endCartographic.latitude) * 180 / Math.PI;
+      const east = Math.max(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
+      const west = Math.min(startCartographic.longitude, endCartographic.longitude) * 180 / Math.PI;
+      // Remove rectangle entity
+      if (rectEntity) viewer.entities.remove(rectEntity);
+      handler.destroy();
+      setPlanningMode(false);
+      // Redirect to planning mode
+      if (typeof setPlanningTrigger === 'function') setPlanningTrigger(false);
+      navigate(`/planning?n=${north}&s=${south}&e=${east}&w=${west}`);
+    }, Cesium.ScreenSpaceEventType.RIGHT_UP);
+  };
   const [menuPos, setMenuPos] = useState(null);
   const [clickedLatLng, setClickedLatLng] = useState(null);
   const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
   const [heatLayer, setHeatLayer] = useState(null);
   const [heatTileUrl, setHeatTileUrl] = useState(null);
   const tilesetRef = useRef(null); // Store reference to Google 3D tileset
-    // Fetch heatmap tile URL when year or activeLayer changes (for thermal view)
-    useEffect(() => {
-      if (activeLayer !== 'heat') {
-        setHeatTileUrl(null);
-        return;
-      }
-      fetchHeatLayer(year)
-        .then((data) => {
-          if (data.tileUrl) {
-            setHeatTileUrl(data.tileUrl);
-          } else {
-            setHeatTileUrl(null);
-          }
-        })
-        .catch(() => setHeatTileUrl(null));
-    }, [year, activeLayer]);
+  // Fetch heatmap tile URL when year or activeLayer changes (for thermal view)
+  useEffect(() => {
+    if (activeLayer !== 'heat') {
+      setHeatTileUrl(null);
+      return;
+    }
+    fetchHeatLayer(year)
+      .then((data) => {
+        if (data.tileUrl) {
+          setHeatTileUrl(data.tileUrl);
+        } else {
+          setHeatTileUrl(null);
+        }
+      })
+      .catch(() => setHeatTileUrl(null));
+  }, [year, activeLayer]);
 
-    // Add or remove Cesium heatmap imagery layer when heatTileUrl changes
-    useEffect(() => {
-      if (!viewerRef.current || !window.Cesium) return;
-      const Cesium = window.Cesium;
-      const viewer = viewerRef.current;
-      // Remove previous heat layer if any
-      if (heatLayer) {
-        try { viewer.imageryLayers.remove(heatLayer, false); } catch {}
-        setHeatLayer(null);
+  // Add or remove Cesium heatmap imagery layer when heatTileUrl changes
+  useEffect(() => {
+    if (!viewerRef.current || !window.Cesium) return;
+    const Cesium = window.Cesium;
+    const viewer = viewerRef.current;
+    // Remove previous heat layer if any
+    if (heatLayer) {
+      try { viewer.imageryLayers.remove(heatLayer, false); } catch { }
+      setHeatLayer(null);
+    }
+    if (activeLayer === 'heat' && heatTileUrl) {
+      // Hide the 3D tileset when in thermal mode so heatmap is visible
+      if (tilesetRef.current) {
+        tilesetRef.current.show = false;
+        console.log('✓ Hiding 3D tileset for thermal view');
       }
-      if (activeLayer === 'heat' && heatTileUrl) {
-        // Hide the 3D tileset when in thermal mode so heatmap is visible
-        if (tilesetRef.current) {
-          tilesetRef.current.show = false;
-          console.log('✓ Hiding 3D tileset for thermal view');
-        }
-        const newLayer = new Cesium.UrlTemplateImageryProvider({
-          url: heatTileUrl,
-          maximumLevel: 19,
-          tilingScheme: new Cesium.WebMercatorTilingScheme(),
-          credit: 'MODIS LST',
-        });
-        // Add the heatmap imagery layer to the top of the stack for maximum visibility
-        const imageryLayer = viewer.imageryLayers.addImageryProvider(newLayer);
-        imageryLayer.alpha = 0.8; // Set to 0.8 to match 2D map
-        // Move the heatmap layer to the top (above all others)
-        viewer.imageryLayers.raiseToTop(imageryLayer);
-        setHeatLayer(imageryLayer);
-        console.log('✓ Heatmap layer added');
-      } else {
-        // Show the 3D tileset when not in thermal mode
-        if (tilesetRef.current) {
-          tilesetRef.current.show = true;
-          console.log('✓ Showing 3D tileset for satellite view');
-        }
+      const newLayer = new Cesium.UrlTemplateImageryProvider({
+        url: heatTileUrl,
+        maximumLevel: 19,
+        tilingScheme: new Cesium.WebMercatorTilingScheme(),
+        credit: 'MODIS LST',
+      });
+      // Add the heatmap imagery layer to the top of the stack for maximum visibility
+      const imageryLayer = viewer.imageryLayers.addImageryProvider(newLayer);
+      imageryLayer.alpha = 0.8; // Set to 0.8 to match 2D map
+      // Move the heatmap layer to the top (above all others)
+      viewer.imageryLayers.raiseToTop(imageryLayer);
+      setHeatLayer(imageryLayer);
+      console.log('✓ Heatmap layer added');
+    } else {
+      // Show the 3D tileset when not in thermal mode
+      if (tilesetRef.current) {
+        tilesetRef.current.show = true;
+        console.log('✓ Showing 3D tileset for satellite view');
       }
-      // eslint-disable-next-line
-    }, [heatTileUrl, activeLayer]);
+    }
+    // eslint-disable-next-line
+  }, [heatTileUrl, activeLayer]);
 
   // Hide menu on click elsewhere
   useEffect(() => {
@@ -214,9 +219,29 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
 
     // Only allow heat analysis in Thermal X-Ray mode
     if (activeLayer !== 'heat') {
-      setAnalysis(
-        `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Coordinates:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
-      );
+      // Fetch location name even in non-thermal mode
+      setIsAnalyzing(true);
+      try {
+        const analysisRes = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng })
+        });
+        let locationName = 'Unknown Location';
+        if (analysisRes.ok) {
+          const aiData = await analysisRes.json();
+          locationName = aiData.location_name || 'Unknown Location';
+        }
+        // Show coordinates and location name with message to switch mode
+        setAnalysis(
+          `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Location:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${locationName}</div><div style="font-size:0.85rem;color:#888;margin-bottom:0.5rem;"><b>Coordinates:</b> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
+        );
+      } catch (err) {
+        // If API fails, show coordinates only
+        setAnalysis(
+          `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Coordinates:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
+        );
+      }
       setIsAnalyzing(false);
       return;
     }
@@ -280,24 +305,33 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
   // Update Cesium camera when mapView changes (from external source or 2D map)
   useEffect(() => {
     if (!viewerRef.current || !window.Cesium || !mapView) return;
-    
+
     const Cesium = window.Cesium;
     const viewer = viewerRef.current;
-    
+
     // Validate mapView values
     if (!mapView.lat || !mapView.lng || mapView.zoom === undefined) return;
     if (Math.abs(mapView.lat) > 90 || Math.abs(mapView.lng) > 180) return;
-    
+
     isUpdatingRef.current = true;
     let height = zoomToHeight(mapView.zoom);
     let pitch = calculatePitch(height);
+
+    // Check if height is below minimum safe threshold
+    if (height < MIN_SAFE_HEIGHT) {
+      console.warn('[Cesium Sync] Camera height', height.toFixed(2), 'm is below minimum safe height', MIN_SAFE_HEIGHT, 'm. Sync prevented to avoid crash.');
+      setShowZoomLimitPopup(true);
+      isUpdatingRef.current = false;
+      return; // Prevent camera update
+    }
+
     // At very low heights, force top-down and add small offset for safety
     if (height < 1000) {
       pitch = -89;
       height = height + 20; // small safety offset
     }
     console.log('[Cesium Sync] Setting camera height:', height, 'pitch:', pitch, 'for zoom:', mapView.zoom);
-    
+
     try {
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(
@@ -314,7 +348,7 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
     } catch (error) {
       console.error('[Cesium Sync] Error setting Cesium camera at height:', height, 'zoom:', mapView.zoom, error);
     }
-    
+
     setTimeout(() => {
       isUpdatingRef.current = false;
     }, 150);
@@ -462,11 +496,11 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
           dynamicScreenSpaceErrorHeightFalloff: 0.25
         }
       );
-      
+
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset; // Store reference for later control
       console.log('✓ Google Photorealistic 3D Tiles loaded successfully');
-      
+
     } catch (error) {
       console.error('❌ Error loading Google 3D Tiles:', error);
       alert('Failed to load Google 3D Tiles. Check console for details.');
@@ -532,6 +566,62 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
           >
             Analyze Now
           </button>
+        </div>
+      )}
+      {/* Zoom Limit Popup */}
+      {showZoomLimitPopup && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+          }}
+          onClick={() => setShowZoomLimitPopup(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '500px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+              <span style={{ fontSize: '2rem', marginRight: '12px' }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#333' }}>
+                Zoom Limit Reached
+              </h3>
+            </div>
+            <p style={{ fontSize: '1rem', lineHeight: '1.6', color: '#555', marginBottom: '20px' }}>
+              The 3D Photorealistic Map cannot synchronize at this zoom level due to technical limitations.
+              For further zooming, please <strong>zoom directly in the Photorealistic 3D Map</strong> using your mouse wheel or pinch gestures.
+            </p>
+            <button
+              style={{
+                width: '100%',
+                padding: '12px',
+                background: '#06b6d4',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '1rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+              onClick={() => setShowZoomLimitPopup(false)}
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
     </div>

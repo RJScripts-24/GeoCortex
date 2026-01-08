@@ -430,6 +430,106 @@ def chatbot():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/planning/analyze', methods=['POST'])
+def planning_analysis():
+    print("[DEBUG] /api/planning/analyze endpoint called")
+    try:
+        data = request.json
+        lat = data.get('lat')
+        lng = data.get('lng')
+        # items = [{'label': 'Tree', ...}, ...]
+        items = data.get('items', [])
+        
+        if not lat or not lng:
+            return jsonify({"error": "Coordinates required"}), 400
+            
+        # 1. Get Base LST from Earth Engine (similar to chatbot logic)
+        current_year = 2024
+        point = ee.Geometry.Point([lng, lat])
+        image = ee.ImageCollection('MODIS/061/MOD11A2') \
+            .filter(ee.Filter.date(f'{current_year}-01-01', f'{current_year}-12-31')) \
+            .select('LST_Day_1km') \
+            .mean()
+            
+        base_temp_c = None
+        try:
+            lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
+            if lst_value is not None and lst_value > 0:
+                temperature_k = lst_value * 0.02
+                base_temp_c = temperature_k - 273.15
+        except Exception as e:
+            print(f"EE Error: {e}")
+            # Fallback if EE fails or no data
+            base_temp_c = 30.0 
+
+        # 2. Calculate Impact
+        impact_map = {
+            'Tree': -0.5,
+            'Plant': -0.2,
+            'Pond': -1.0,
+            'Building': 0.5,
+            'Road': 0.8
+        }
+        
+        total_impact = 0
+        item_details = {}
+        
+        for item in items:
+            itype = item.get('label')
+            if not itype: continue
+            
+            impact = impact_map.get(itype, 0)
+            total_impact += impact
+            item_details[itype] = item_details.get(itype, 0) + 1
+            
+        total_impact = max(min(total_impact, 8.0), -8.0)
+        projected_temp_c = base_temp_c + total_impact
+        
+        # 3. Generate AI Report via Groq
+        api_key = os.getenv("GROQ_API_KEY")
+        ai_insights = "AI Insights unavailable."
+        
+        if api_key:
+            client = Groq(api_key=api_key)
+            item_summary = ", ".join([f"{v} {k}(s)" for k, v in item_details.items()])
+            
+            prompt = (
+                f"Generate a professional environmental impact report for a planned urban development.\\n"
+                f"Location Coordinates: {lat}, {lng}\\n"
+                f"Current Baseline Land Surface Temperature (LST): {base_temp_c:.2f} deg C\\n"
+                f"Planned Infrastructure: {item_summary}\\n"
+                f"Projected LST Change: {total_impact:+.2f} deg C\\n"
+                f"Projected New LST: {projected_temp_c:.2f} deg C\\n\\n"
+                "Please provide:\\n"
+                "1. **Impact Analysis**: How the placed items specifically affect the local microclimate.\\n"
+                "2. **Sustainability Assessment**: Is this a positive or negative change? Why?\\n"
+                "3. **Recommendations**: 2-3 specific suggestions to further improve thermal comfort based on these changes.\\n\\n"
+                "Format the response in clear HTML-ready paragraphs with bold headers. Use emojis where appropriate. Keep it concise but professional."
+            )
+            
+            try:
+                response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="llama-3.3-70b-versatile",
+                )
+                ai_insights = response.choices[0].message.content
+            except Exception as e:
+                print(f"Groq Error: {e}")
+                ai_insights = "Could not generate AI insights at this time."
+
+        return jsonify({
+            "base_temp": round(base_temp_c, 2),
+            "projected_temp": round(projected_temp_c, 2),
+            "net_change": round(total_impact, 2),
+            "item_summary": item_details,
+            "ai_report_text": ai_insights
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Print all registered routes for debugging
     print("\n=== Registered Flask Routes ===")

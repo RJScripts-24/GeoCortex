@@ -9,21 +9,21 @@ import html2canvas from 'html2canvas';
 
 
 const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange }) => {
-    // Planning Mode selection state
-    const [selectingRegion, setSelectingRegion] = useState(false);
-    const selectingRegionRef = useRef(false);
-    useEffect(() => { selectingRegionRef.current = selectingRegion; }, [selectingRegion]);
-    const [regionRect, setRegionRect] = useState(null);
-    const regionOverlayRef = useRef(null);
-    const mapRef = useRef(null);
-    const overlayRef = useRef(null);
-    const [tileUrl, setTileUrl] = useState(null);
-    const [menuPos, setMenuPos] = useState(null);
-    const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
-    const [clickedLatLng, setClickedLatLng] = useState(null);
-    const [mapInstance, setMapInstance] = useState(null);
-    const isUpdatingRef = useRef(false);
-    const lastProgrammaticUpdateRef = useRef(0);
+  // Planning Mode selection state
+  const [selectingRegion, setSelectingRegion] = useState(false);
+  const selectingRegionRef = useRef(false);
+  useEffect(() => { selectingRegionRef.current = selectingRegion; }, [selectingRegion]);
+  const [regionRect, setRegionRect] = useState(null);
+  const regionOverlayRef = useRef(null);
+  const mapRef = useRef(null);
+  const overlayRef = useRef(null);
+  const [tileUrl, setTileUrl] = useState(null);
+  const [menuPos, setMenuPos] = useState(null);
+  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
+  const [clickedLatLng, setClickedLatLng] = useState(null);
+  const [mapInstance, setMapInstance] = useState(null);
+  const isUpdatingRef = useRef(false);
+  const lastProgrammaticUpdateRef = useRef(0);
 
 
   // Fetch heatmap tile URL when year changes (for thermal view)
@@ -95,7 +95,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
         console.log('[PlanningMode] Mouse down ignored. selectingRegion:', selectingRegionRef.current, 'button:', e.domEvent.button);
       }
     });
-    
+
     map.addListener('mousemove', (e) => {
       if (!isSelecting || !startLatLng || !regionRectObj) {
         return;
@@ -105,7 +105,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
       regionRectObj.setBounds(bounds);
       console.log('[PlanningMode] Region selection: updating rectangle bounds');
     });
-    
+
     map.addListener('mouseup', (e) => {
       if (!isSelecting || !startLatLng || !regionRectObj) {
         return;
@@ -133,6 +133,19 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
       console.log('[PlanningMode] Region selected. Redirecting to planning:', ne.lat(), sw.lat(), ne.lng(), sw.lng());
       window.location.href = `/planning?n=${ne.lat()}&s=${sw.lat()}&e=${ne.lng()}&w=${sw.lng()}`;
     });
+
+    // Add right-click context menu handler (when NOT in planning mode)
+    map.addListener('rightclick', (e) => {
+      // Only show context menu if NOT in planning/region selection mode
+      if (!selectingRegionRef.current) {
+        e.domEvent.preventDefault();
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        setClickedLatLng({ lat, lng });
+        setMenuPos({ x: e.domEvent.clientX, y: e.domEvent.clientY });
+        console.log('[MapViewer] Right-click context menu shown at:', lat, lng);
+      }
+    });
   }, [mapInstance]);
   // Listen for planningTrigger prop
   useEffect(() => {
@@ -145,33 +158,33 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
   // Update map when mapView changes (from external source or 3D map)
   useEffect(() => {
     if (!mapInstance || !mapView) return;
-    
+
     // Validate that lat and lng are valid numbers
     const lat = parseFloat(mapView.lat);
     const lng = parseFloat(mapView.lng);
     const zoom = parseFloat(mapView.zoom);
-    
+
     if (!isFinite(lat) || !isFinite(lng) || !isFinite(zoom)) {
       console.warn('Invalid mapView values:', { lat: mapView.lat, lng: mapView.lng, zoom: mapView.zoom });
       return;
     }
-    
+
     isUpdatingRef.current = true;
     lastProgrammaticUpdateRef.current = Date.now();
     const currentCenter = mapInstance.getCenter();
     const currentZoom = mapInstance.getZoom();
-    
+
     // Only update if values actually changed
-    const centerChanged = !currentCenter || 
-      Math.abs(currentCenter.lat() - lat) > 0.0001 || 
+    const centerChanged = !currentCenter ||
+      Math.abs(currentCenter.lat() - lat) > 0.0001 ||
       Math.abs(currentCenter.lng() - lng) > 0.0001;
     const zoomChanged = currentZoom !== zoom;
-    
+
     if (centerChanged || zoomChanged) {
       mapInstance.setCenter({ lat, lng });
       mapInstance.setZoom(zoom);
     }
-    
+
     setTimeout(() => {
       isUpdatingRef.current = false;
     }, 100);
@@ -181,7 +194,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
   useEffect(() => {
     if (!mapInstance || !onViewChange) return;
     let debounceTimeout = null;
-    
+
     const handleIdle = () => {
       // Ignore idle events that occur within 300ms of a programmatic update
       const now = Date.now();
@@ -249,10 +262,10 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
       lat = 12.9716;
       lng = 77.5946;
     }
-    
+
     // Store clicked location
     setClickedLocation({ lat, lng });
-    
+
     // Capture map screenshot
     try {
       if (mapRef.current) {
@@ -267,8 +280,37 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
     } catch (err) {
       console.error('Failed to capture map:', err);
     }
-    
-    // Always allow Analyze Now for thermal/AI consultant (not solar)
+
+    // Only allow heat analysis in Thermal X-Ray mode
+    if (activeLayer !== 'heat') {
+      // Fetch location name even in non-thermal mode
+      setIsAnalyzing(true);
+      try {
+        const analysisRes = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng })
+        });
+        let locationName = 'Unknown Location';
+        if (analysisRes.ok) {
+          const aiData = await analysisRes.json();
+          locationName = aiData.location_name || 'Unknown Location';
+        }
+        // Show coordinates and location name with message to switch mode
+        setAnalysis(
+          `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Location:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${locationName}</div><div style="font-size:0.85rem;color:#888;margin-bottom:0.5rem;"><b>Coordinates:</b> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
+        );
+      } catch (err) {
+        // If API fails, show coordinates only
+        setAnalysis(
+          `<div style="font-size:1.2rem;font-weight:bold;line-height:2;">🗺️ <span style='font-size:1.3rem;'>Coordinates Selected</span></div><div style="margin-top:1rem;"><div style="font-size:1.1rem;font-weight:bold;">📍 Coordinates:</div><div style="font-size:1rem;margin-bottom:0.5rem;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div><div style="color:#f87171;font-size:1rem;margin-top:1rem;">For heat analysis kindly switch to <b>Thermal X-Ray</b> mode.</div></div>`
+        );
+      }
+      setIsAnalyzing(false);
+      return;
+    }
+
+    // Perform heat analysis only in Thermal X-Ray mode
     setIsAnalyzing(true);
     try {
       // Fetch AI consultant analysis and temperature from backend
@@ -304,7 +346,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
     window.addEventListener('click', hideMenu);
     return () => window.removeEventListener('click', hideMenu);
   }, []);
-  
+
   // Debug: log menuPos changes
   useEffect(() => {
     console.log('[DEBUG] menuPos changed:', menuPos);
