@@ -117,16 +117,29 @@ export default function EnergyModeCesium({ viewer }) {
       clearRectangle();
     }
     return () => {
-      handler.destroy();
+      try {
+        handler.destroy();
+      } catch (e) {
+        // Handler may already be destroyed
+      }
       clearRectangle();
-      viewer.scene.canvas.removeEventListener('contextmenu', handleContextMenu);
-      // Restore camera controls on cleanup
-      const controller = viewer.scene.screenSpaceCameraController;
-      controller.enableRotate = true;
-      controller.enableLook = true;
-      controller.enableTilt = true;
-      controller.enableTranslate = true;
-      controller.enableZoom = true;
+      // Guard against viewer being destroyed before cleanup
+      try {
+        if (viewer && !viewer.isDestroyed() && viewer.scene && viewer.scene.canvas) {
+          viewer.scene.canvas.removeEventListener('contextmenu', handleContextMenu);
+        }
+        // Restore camera controls on cleanup (with null checks)
+        if (viewer && !viewer.isDestroyed() && viewer.scene && viewer.scene.screenSpaceCameraController) {
+          const controller = viewer.scene.screenSpaceCameraController;
+          controller.enableRotate = true;
+          controller.enableLook = true;
+          controller.enableTilt = true;
+          controller.enableTranslate = true;
+          controller.enableZoom = true;
+        }
+      } catch (e) {
+        // Viewer may already be destroyed, ignore cleanup errors
+      }
     };
   }, [isEnergyMode, viewer]);
 
@@ -213,7 +226,7 @@ export default function EnergyModeCesium({ viewer }) {
             padding: '0'
           }}
         >
-          <button 
+          <button
             onClick={handleAnalyzeSolar}
             style={{
               width: '100%',

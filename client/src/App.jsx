@@ -9,6 +9,8 @@ import GestureHUD from './components/GestureHUD';
 import Controls from './components/Controls';
 import PlanningMode from './components/PlanningMode';
 import CinematicPreview from './components/CinematicPreview';
+import GestureInstructionsPopup from './components/GestureInstructionsPopup';
+import LandingPage from './components/LandingPage';
 import { Routes, Route } from 'react-router-dom';
 import './App.css';
 
@@ -27,6 +29,7 @@ const App = () => {
   const [showCinematicPreview, setShowCinematicPreview] = React.useState(false);
   const [currentLocationName, setCurrentLocationName] = React.useState('');
   const [showDronePopup, setShowDronePopup] = React.useState(false);
+  const [showGestureInstructions, setShowGestureInstructions] = React.useState(true);
   const syncInProgressRef = React.useRef(false);
 
   // Handle view changes from either map
@@ -51,8 +54,12 @@ const App = () => {
   return (
     <GlobalProvider>
       <Routes>
+        {/* Landing Page - Default Route */}
+        <Route path="/" element={<LandingPage />} />
+
+        {/* Map Interface */}
         <Route
-          path="/"
+          path="/map"
           element={
             <div className="relative w-full h-screen overflow-hidden bg-gray-50 flex">
               {/* Main Content Area */}
@@ -214,6 +221,11 @@ const App = () => {
 
                   {/* Absolute positioned Sidebar Panel (Hidden/Shown) */}
                   <Sidebar />
+
+                  {/* Gesture Instructions Popup on Load */}
+                  {showGestureInstructions && (
+                    <GestureInstructionsPopup onClose={() => setShowGestureInstructions(false)} />
+                  )}
                 </div>
               </div>
             </div>

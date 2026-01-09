@@ -16,9 +16,7 @@ body {
   /* slate-50 */
   color: #1e293b;
   /* slate-800 */
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
 }
 
 /* Custom Scrollbar */
@@ -68,4 +66,105 @@ body {
 
 .slide-in-from-top-4 {
   animation: slideInTop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Floating animations for Landing Page decorative elements */
+@keyframes float-slow {
+
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  25% {
+    translate: 12px -8px;
+  }
+
+  50% {
+    translate: -8px -15px;
+  }
+
+  75% {
+    translate: -15px 8px;
+  }
+}
+
+@keyframes float-slow-reverse {
+
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  25% {
+    translate: -10px 12px;
+  }
+
+  50% {
+    translate: 15px 10px;
+  }
+
+  75% {
+    translate: 10px -12px;
+  }
+}
+
+@keyframes float-medium {
+
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  33% {
+    translate: -10px 8px;
+  }
+
+  66% {
+    translate: 8px -10px;
+  }
+}
+
+@keyframes float-fast {
+
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: -8px 8px;
+  }
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    translate: 0 10px;
+  }
+
+  100% {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 20s ease-in-out infinite;
+}
+
+.animate-float-slow-reverse {
+  animation: float-slow-reverse 22s ease-in-out infinite;
+}
+
+.animate-float-medium {
+  animation: float-medium 16s ease-in-out infinite;
+}
+
+.animate-float-fast {
+  animation: float-fast 12s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
