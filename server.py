@@ -5,6 +5,7 @@ from groq import Groq
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
+import requests
 from solar_engine import analyze_solar_potential, analyze_solar_potential_with_ai
 
 load_dotenv()
@@ -580,6 +581,166 @@ def planning_analysis():
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/check_pollen', methods=['POST'])
+def check_pollen():
+    try:
+        data = request.json
+        lat = data.get('lat')
+        lng = data.get('lng')
+        
+        if not lat or not lng:
+            return jsonify({'error': 'Coordinates required'}), 400
+
+        api_key = os.getenv('GOOGLE_POLLEN_API_KEY')
+        if not api_key:
+            # If key is missing, fail safe? Or block?
+            # User specifically asked for this feature, so let's error if missing to alert dev.
+            return jsonify({'error': 'Pollen API key not configured'}), 500
+            
+        api_key = api_key.strip()
+
+        # Pollen API uses GET with query parameters, not POST
+        # Format: GET /v1/forecast:lookup?key=KEY&location.latitude=LAT&location.longitude=LNG&days=1
+        params = {
+            'key': api_key,
+            'location.latitude': lat,
+            'location.longitude': lng,
+            'days': 1,
+            'plantsDescription': True
+        }
+        
+        url = "https://pollen.googleapis.com/v1/forecast:lookup"
+        
+        print(f"[DEBUG] Checking pollen for {lat}, {lng}")
+        response = requests.get(url, params=params)
+        
+        if not response.ok:
+            print(f"[DEBUG] Pollen API Error: {response.text}")
+            
+            # Handle 400 errors (location not covered) gracefully
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('error', {}).get('message', 'Location not covered')
+                    
+                    # Location not covered - default to safe (allow planting)
+                    return jsonify({
+                        'safe': True,
+                        'level': 'Unknown',
+                        'value': 0,
+                        'message': f'Pollen data unavailable for this location. Planting allowed.'
+                    })
+                except:
+                    pass
+            
+            return jsonify({'error': 'Failed to fetch pollen data', 'details': response.text}), response.status_code
+            
+        pollen_data = response.json()
+        
+        # Extract Grass Pollen Index
+        # Response structure: dailyInfo[0] -> pollenTypeInfo -> list of types
+        # We look for code: "GRASS"
+        
+        day_info = pollen_data.get('dailyInfo', [])
+        if not day_info:
+             return jsonify({'safe': True, 'message': 'No pollen data available for this location', 'level': 'Unknown'})
+             
+        pollen_types = day_info[0].get('pollenTypeInfo', [])
+        
+        # Try to find GRASS pollen first
+        grass_pollen = next((p for p in pollen_types if p.get('code') == 'GRASS'), None)
+        
+        # Fallback: if no GRASS, try GRAMINALES (grasses)
+        if not grass_pollen:
+            grass_pollen = next((p for p in pollen_types if p.get('code') == 'GRAMINALES'), None)
+        
+        if not grass_pollen:
+             # No grass pollen data at all - default to safe
+             return jsonify({'safe': True, 'message': 'No grass pollen data available for this location', 'level': 'Unknown'})
+        
+        # Index info: value (0-5), category (Low, Moderate, High, Very High)
+        # UPI (Universal Pollen Index)
+        index_info = grass_pollen.get('indexInfo', {})
+        value = index_info.get('value')
+        category = index_info.get('category')
+        
+        # Handle None values (no data for this season/location)
+        if value is None or category is None:
+            print(f"[DEBUG] Grass Pollen data exists but no index values (likely off-season)")
+            return jsonify({
+                'safe': True,
+                'level': 'Low',
+                'value': 0,
+                'message': 'Grass pollen levels are currently very low (off-season)'
+            })
+        
+        print(f"[DEBUG] Grass Pollen: Value={value}, Category={category}")
+        
+        # Logic: Safe if value < 3 (Low=0-2? Actually API usually 0-5 scale: 0-1 Low, 2 Moderate, 3 High, 4 Very High, 5 Extreme)
+        # User said "High" should be removed.
+        # Let's assume High(3), Very High(4), Extreme(5) are unsafe.
+        # Moderate(2) and Low(1,0) are safe.
+        # Adjust based on standard UPI if needed, but High is usually bad.
+        
+
+        is_safe = value < 3 
+        
+        # Pollen check logic completed
+        return jsonify({
+            'safe': is_safe,
+            'level': category,
+            'value': value,
+            'message': f"Grass Pollen Level is {category}"
+        })
+
+    except Exception as e:
+        print(f"Error in check_pollen: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/aerial_view', methods=['GET'])
+def aerial_view():
+    try:
+        address = request.args.get('address')
+        if not address:
+            return jsonify({'error': 'Address required'}), 400
+
+        # Try specific Aerial View key first, then generic Maps key
+        api_key = os.getenv('VITE_GOOGLE_AERIAL_VIEW_KEY') or os.getenv('GOOGLE_AERIAL_VIEW_API_KEY') or os.getenv('GOOGLE_MAPS_API_KEY')
+        
+        if not api_key:
+            return jsonify({'error': 'Aerial View API key not configured on server'}), 500
+            
+        api_key = api_key.strip()
+        
+        url = "https://aerialview.googleapis.com/v1/videos:lookupVideo"
+        params = {
+            'key': api_key,
+            'address': address
+        }
+        
+        print(f"[DEBUG] Fetching Aerial View for: {address}")
+        response = requests.get(url, params=params)
+        
+        if not response.ok:
+            print(f"[ERROR] Aerial View API Error ({response.status_code}): {response.text}")
+            # Try to parse error response
+            try:
+                error_data = response.json()
+                return jsonify(error_data), response.status_code
+            except:
+                return jsonify({'error': f'API request failed with status {response.status_code}', 'details': response.text}), response.status_code
+            
+        print(f"[DEBUG] Aerial View API Success")
+        return jsonify(response.json())
+        
+    except Exception as e:
+        print(f"Error in aerial_view: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

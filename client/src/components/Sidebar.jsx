@@ -53,21 +53,6 @@ const Sidebar = () => {
 
   return (
     <>
-      {/* Solar Flux Map Button (Energy Mode) - Repositioned/Styled */}
-      <div className="absolute left-[80px] top-24 z-[99]">
-        {/* Kept here for specific toggle availability, matching new style */}
-        <button
-          onClick={() => setIsEnergyMode((v) => !v)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium text-xs transition-all shadow-md ${isEnergyMode
-            ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-            : 'bg-white text-slate-600 border border-gray-200 hover:bg-gray-50'
-            }`}
-        >
-          <div className={`w-2 h-2 rounded-full ${isEnergyMode ? 'bg-yellow-500 animate-pulse' : 'bg-gray-300'}`} />
-          {isEnergyMode ? 'Solar Map Active' : 'Solar Flux Map'}
-        </button>
-      </div>
-
       {showConsultant && (
         <div
           id="sidebar-panel"

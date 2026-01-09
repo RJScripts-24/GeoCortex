@@ -43,6 +43,9 @@ const PlanningMode = () => {
   const [insightsData, setInsightsData] = useState(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
 
+  // Pollen Popup State
+  const [pollenPopup, setPollenPopup] = useState({ visible: false, status: 'idle', message: '', safe: true });
+
   const bounds = getQueryParams(location.search);
 
   const handleAnalyze = async () => {
@@ -245,6 +248,70 @@ const PlanningMode = () => {
       e.dataTransfer.dropEffect = 'copy';
     });
 
+
+
+    const checkPollenAndPlace = async (asset, lat, lng, modelData) => {
+      // Show checking status (optional, or just handle via popup trigger)
+      setPollenPopup({ visible: true, status: 'checking', message: 'Checking pollen levels...', safe: true });
+
+      try {
+        const res = await fetch('/api/check_pollen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng })
+        });
+
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = { error: 'Invalid response' };
+        }
+
+        if (res.ok && data.safe !== undefined) {
+          if (data.safe) {
+            // Allowed
+            setPollenPopup({
+              visible: true,
+              status: 'success',
+              message: `Safe to plant! ${data.message || ''}`,
+              safe: true
+            });
+            setPlacedModels(prev => [...prev, modelData]);
+            setTimeout(() => {
+              setPollenPopup(prev => prev.status === 'success' ? { ...prev, visible: false } : prev);
+            }, 3000);
+          } else {
+            // Blocked
+            setPollenPopup({
+              visible: true,
+              status: 'danger',
+              message: `Warning: This area already has high Grass Pollen. Avoid planting trees here to protect asthmatic residents. (${data.level})`,
+              safe: false
+            });
+          }
+        } else {
+          // Error from API (e.g. 404 or 500) -> Fail Open (Allow)
+          console.warn("Pollen API error, allowing planting:", data);
+          setPlacedModels(prev => [...prev, modelData]);
+          setPollenPopup({
+            visible: true,
+            status: 'success',
+            message: 'Pollen check unavailable. Planting allowed.',
+            safe: true
+          });
+          setTimeout(() => {
+            setPollenPopup(prev => prev.status === 'success' ? { ...prev, visible: false } : prev);
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Pollen check failed", err);
+        // Network error -> Fail Open
+        setPlacedModels(prev => [...prev, modelData]);
+        setPollenPopup({ visible: false, status: 'idle', message: '', safe: true });
+      }
+    };
+
     mapDiv.addEventListener('drop', (e) => {
       e.preventDefault();
       const assetFile = e.dataTransfer.getData('asset');
@@ -272,7 +339,6 @@ const PlanningMode = () => {
 
       console.log('[PlanningMode] Placing 3D model:', asset.label, 'at', latLng.lat(), latLng.lng());
 
-      // Add to placed models
       const newModel = {
         coordinates: [latLng.lng(), latLng.lat()],
         file: asset.file,
@@ -284,7 +350,13 @@ const PlanningMode = () => {
         id: Date.now(), // Unique ID for each model
       };
 
-      setPlacedModels(prev => [...prev, newModel]);
+      // Pollen Check for Trees and Plants
+      if (asset.label === 'Tree' || asset.label === 'Plant') {
+        checkPollenAndPlace(asset, latLng.lat(), latLng.lng(), newModel);
+      } else {
+        // Direct placement for others
+        setPlacedModels(prev => [...prev, newModel]);
+      }
     });
 
 
@@ -552,6 +624,40 @@ const PlanningMode = () => {
           </div>
         )}
       </div>
+
+      {/* Pollen Warning/Success Popup */}
+      {pollenPopup.visible && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[110] animate-bounce-in">
+          <div className={`px-6 py-4 rounded-lg shadow-2xl border-l-8 flex items-center gap-4 ${pollenPopup.status === 'checking' ? 'bg-white border-gray-400' :
+            pollenPopup.safe ? 'bg-white border-green-500' : 'bg-white border-red-500'
+            }`}>
+            <div className={`text-2xl ${pollenPopup.status === 'checking' ? 'animate-spin' : ''
+              }`}>
+              {pollenPopup.status === 'checking' ? '⏳' :
+                pollenPopup.safe ? '🌿' : '⚠️'}
+            </div>
+            <div>
+              <h4 className={`font-bold ${pollenPopup.status === 'checking' ? 'text-gray-700' :
+                pollenPopup.safe ? 'text-green-700' : 'text-red-600'
+                }`}>
+                {pollenPopup.status === 'checking' ? 'Analyzing Ecosystem...' :
+                  pollenPopup.safe ? 'Planting Approved' : 'Planting Restricted'}
+              </h4>
+              <p className="text-sm text-gray-600 font-medium">
+                {pollenPopup.message}
+              </p>
+            </div>
+            {pollenPopup.status !== 'checking' && (
+              <button
+                onClick={() => setPollenPopup(prev => ({ ...prev, visible: false }))}
+                className="ml-4 text-gray-400 hover:text-gray-600 font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* AI Insights Popup */}
       {showInsights && (

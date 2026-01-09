@@ -8,6 +8,7 @@ import GestureCam from './components/GestureCam';
 import GestureHUD from './components/GestureHUD';
 import Controls from './components/Controls';
 import PlanningMode from './components/PlanningMode';
+import CinematicPreview from './components/CinematicPreview';
 import { Routes, Route } from 'react-router-dom';
 import './App.css';
 
@@ -23,6 +24,8 @@ const App = () => {
     zoom: INITIAL_ZOOM
   });
   const [planningTrigger, setPlanningTrigger] = React.useState(false);
+  const [showCinematicPreview, setShowCinematicPreview] = React.useState(false);
+  const [currentLocationName, setCurrentLocationName] = React.useState('');
   const syncInProgressRef = React.useRef(false);
 
   // Handle view changes from either map
@@ -51,34 +54,6 @@ const App = () => {
           path="/"
           element={
             <div className="relative w-full h-screen overflow-hidden bg-gray-50 flex">
-              {/* Left Vertical Icon Sidebar */}
-              <aside className="w-16 h-full bg-white border-r border-gray-200 flex flex-col items-center py-4 z-[110] shadow-sm">
-                {/* Top Icon */}
-                <div className="mb-8">
-                  <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-cyan-50/50 text-cyan-600 hover:bg-cyan-100 transition-colors">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 22h20L12 2zm0 3.5L18.5 20H5.5L12 5.5z" /></svg>
-                    {/* Placeholder generic icon */}
-                  </button>
-                </div>
-
-                {/* Nav Icons */}
-                <div className="flex flex-col gap-6 w-full items-center">
-                  {['home', 'time', 'layers', 'user'].map((icon, idx) => (
-                    <button key={icon} className={`group relative w-10 h-10 flex items-center justify-center rounded-full transition-all ${idx === 0 ? 'bg-gray-100 text-slate-800 shadow-inner' : 'text-gray-400 hover:text-slate-600 hover:bg-gray-50'}`}>
-                      <div className="w-5 h-5 bg-current rounded-sm opacity-80" />
-                      {/* Use simple shapes for now if no icons available, or SVGs */}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Bottom Icons */}
-                <div className="mt-auto flex flex-col gap-4">
-                  <button className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-slate-600">
-                    <div className="w-5 h-5 rounded-full border-2 border-current" />
-                  </button>
-                </div>
-              </aside>
-
               {/* Main Content Area */}
               <div className="flex-1 relative flex flex-col h-full">
 
@@ -87,12 +62,11 @@ const App = () => {
                   <div className="flex items-center gap-6">
                     {/* Brand */}
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-lg shadow-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-xs">GC</span>
-                      </div>
-                      <h1 className="text-xl font-bold tracking-tight text-slate-800">
-                        Geo<span className="text-slate-500 font-medium">Cortex</span>
-                      </h1>
+                      <img 
+                        src="/Geocortex Logo.png" 
+                        alt="GeoCortex Logo" 
+                        className="h-10 w-auto object-contain"
+                      />
                     </div>
 
                     {/* Mode Switcher Pill */}
@@ -110,14 +84,35 @@ const App = () => {
                         Planning Mode
                       </button>
                     </div>
+
+                    {/* Navbar Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (currentLocationName) {
+                            setShowCinematicPreview(true);
+                          }
+                        }}
+                        disabled={!currentLocationName}
+                        title={!currentLocationName ? "Please search for a location first" : "View Cinematic Aerial Video"}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-md ${currentLocationName
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-lg hover:scale-105 active:scale-95'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                      >
+                        <svg className={`w-4 h-4 ${currentLocationName ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        Drone View
+                      </button>
+                    </div>
                   </div>
 
                   {/* Search and Profile */}
                   <div className="flex items-center gap-4">
-                    <SearchBox onSelectLocation={(loc) => setMoveTo({ lat: loc.lat, lng: loc.lon })} />
-                    <button className="w-8 h-8 rounded-full bg-yellow-400/20 text-yellow-600 flex items-center justify-center hover:bg-yellow-400/30 transition-colors">
-                      <span className="font-bold text-xs">JD</span>
-                    </button>
+                    <SearchBox onSelectLocation={(loc) => {
+                      setMoveTo({ lat: loc.lat, lng: loc.lon });
+                      // Also update current location for cinematic view if needed
+                      setCurrentLocationName(loc.display_name);
+                    }} />
                   </div>
                 </nav>
 
@@ -146,6 +141,18 @@ const App = () => {
                   <GestureHUD />
                   <Controls />
                   <GestureCam />
+
+                  {/* Cinematic Preview Overlay */}
+                  {showCinematicPreview && (
+                    <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-8 animate-in fade-in zoom-in duration-300">
+                      <div className="w-full max-w-5xl shadow-2xl rounded-2xl overflow-hidden">
+                        <CinematicPreview
+                          targetAddress={currentLocationName}
+                          onClose={() => setShowCinematicPreview(false)}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Absolute positioned Sidebar Panel (Hidden/Shown) */}
                   <Sidebar />
