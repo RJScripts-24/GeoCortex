@@ -5,7 +5,7 @@ import useHandGesture from '../hooks/useHandGesture';
 const GestureCam = () => {
   const videoRef = useRef(null);
   const { setGesture } = useGlobalStore();
-  
+
   const onGestureDetected = (result) => {
     if (result && result.gestures.length > 0) {
       const categoryName = result.gestures[0][0].categoryName;
@@ -20,14 +20,14 @@ const GestureCam = () => {
   useEffect(() => {
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
             width: 320,
             height: 240,
             frameRate: { ideal: 30 }
-          } 
+          }
         });
-        
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -50,7 +50,7 @@ const GestureCam = () => {
           className="w-full h-full object-cover transform scale-x-[-1]"
         />
         <div className="absolute top-2 right-2">
-            <div className={`w-2 h-2 rounded-full ${isLoaded ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+          <div className={`w-2 h-2 rounded-full ${isLoaded ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
         </div>
       </div>
     </div>

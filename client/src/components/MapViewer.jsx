@@ -4,7 +4,6 @@ import { BitmapLayer } from "@deck.gl/layers";
 import { TileLayer } from "@deck.gl/geo-layers";
 import { fetchHeatLayer } from "../services/api";
 import { useGlobalStore } from "../context/GlobalStore";
-import html2canvas from 'html2canvas';
 
 
 
@@ -19,7 +18,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
   const overlayRef = useRef(null);
   const [tileUrl, setTileUrl] = useState(null);
   const [menuPos, setMenuPos] = useState(null);
-  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage } = useGlobalStore();
+  const { activeLayer, year, setShowConsultant, setAnalysis, setIsAnalyzing, setClickedLocation, setMapImage, setAnalysisView } = useGlobalStore();
   const [clickedLatLng, setClickedLatLng] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
   const isUpdatingRef = useRef(false);
@@ -266,19 +265,17 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
     // Store clicked location
     setClickedLocation({ lat, lng });
 
-    // Capture map screenshot
-    try {
-      if (mapRef.current) {
-        const canvas = await html2canvas(mapRef.current, {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#000000',
-        });
-        const imageData = canvas.toDataURL('image/png');
-        setMapImage(imageData);
-      }
-    } catch (err) {
-      console.error('Failed to capture map:', err);
+    // Store active map view for report generation
+    if (mapRef.current && mapInstance) {
+      const zoom = mapInstance.getZoom();
+      const center = mapInstance.getCenter();
+      setAnalysisView({
+        lat: center.lat(),
+        lng: center.lng(),
+        zoom: zoom
+      });
+      // Clear any old screenshots to ensure static map is used
+      setMapImage(null);
     }
 
     // Only allow heat analysis in Thermal X-Ray mode

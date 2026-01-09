@@ -11,6 +11,7 @@ export const GlobalProvider = ({ children }) => {
   const [showConsultant, setShowConsultant] = useState(false);
   const [clickedLocation, setClickedLocation] = useState(null);
   const [mapImage, setMapImage] = useState(null);
+  const [analysisView, setAnalysisView] = useState(null); // Stores zoom, center for report
   // Energy Mode state
   const [isEnergyMode, setIsEnergyMode] = useState(false);
 
@@ -31,6 +32,8 @@ export const GlobalProvider = ({ children }) => {
       setClickedLocation,
       mapImage,
       setMapImage,
+      analysisView,
+      setAnalysisView,
       setShowConsultant,
       isEnergyMode,
       setIsEnergyMode

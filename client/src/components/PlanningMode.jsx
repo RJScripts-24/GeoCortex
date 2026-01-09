@@ -5,11 +5,10 @@ import { ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 import { generatePlanningPDF } from '../utils/pdfGenerator';
 
 const ASSETS = [
-  { label: 'Plant', file: 'Plant.glb', icon: '🌱', scale: 10 },
-  { label: 'Building', file: 'Large%20Building.glb', icon: '🏢', scale: 1 },
-  { label: 'Pond', file: 'Pond.glb', icon: '💧', scale: 5 },
-  { label: 'Road', file: 'Road.glb', icon: '🛣️', scale: 3 },
-  { label: 'Tree', file: 'Tree.glb', icon: '🌳', scale: 10 },
+  { label: 'Plant', file: 'Plant.glb', icon: '🌱', image: '/Plants.jpg', scale: 10 },
+  { label: 'Building', file: 'Large%20Building.glb', icon: '🏢', image: '/Building.jpg', scale: 1 },
+  { label: 'Pond', file: 'Pond.glb', icon: '💧', image: '/Pond.jpg', scale: 5 },
+  { label: 'Tree', file: 'Tree.glb', icon: '🌳', image: '/Tree.jpg', scale: 10 },
 ];
 
 function getQueryParams(search) {
@@ -280,6 +279,7 @@ const PlanningMode = () => {
         label: asset.label,
         scale: asset.scale,
         icon: asset.icon,
+        image: asset.image,
         size: 64, // Default size
         id: Date.now(), // Unique ID for each model
       };
@@ -375,58 +375,72 @@ const PlanningMode = () => {
       return acc;
     }, {});
 
-    // Create IconLayer with emoji icons
-    const iconMapping = {};
-    const iconAtlas = document.createElement('canvas');
-    const ctx = iconAtlas.getContext('2d');
-    const iconSize = 256; // Increased size for better quality
+    // Create IconLayer with actual images
+    // We need to create a texture atlas from the images
+    const loadImagesAndCreateLayer = async () => {
+      const iconMapping = {};
+      const uniqueImages = [...new Set(placedModels.map(m => m.image))];
 
-    // Get unique icons
-    const uniqueIcons = [...new Set(placedModels.map(m => m.icon))];
-    iconAtlas.width = iconSize * uniqueIcons.length;
-    iconAtlas.height = iconSize;
+      // Load all images
+      const imagePromises = uniqueImages.map(imagePath => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve({ path: imagePath, img });
+          img.onerror = reject;
+          img.src = imagePath;
+        });
+      });
 
-    uniqueIcons.forEach((icon, index) => {
-      // Use a font that supports emojis better
-      ctx.font = `${iconSize * 0.75}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      try {
+        const loadedImages = await Promise.all(imagePromises);
 
-      // Clear the area first
-      ctx.clearRect(iconSize * index, 0, iconSize, iconSize);
+        // Create canvas atlas
+        const iconSize = 128;
+        const canvas = document.createElement('canvas');
+        canvas.width = iconSize * loadedImages.length;
+        canvas.height = iconSize;
+        const ctx = canvas.getContext('2d');
 
-      // Draw the emoji
-      ctx.fillText(icon, iconSize * index + iconSize / 2, iconSize / 2);
+        // Draw each image onto the atlas
+        loadedImages.forEach(({ path, img }, index) => {
+          ctx.drawImage(img, index * iconSize, 0, iconSize, iconSize);
 
-      iconMapping[icon] = {
-        x: iconSize * index,
-        y: 0,
-        width: iconSize,
-        height: iconSize,
-        anchorY: iconSize / 2,
-        anchorX: iconSize / 2,
-      };
-    });
+          iconMapping[path] = {
+            x: index * iconSize,
+            y: 0,
+            width: iconSize,
+            height: iconSize,
+            anchorY: iconSize / 2,
+            anchorX: iconSize / 2,
+          };
+        });
 
-    const iconLayer = new IconLayer({
-      id: 'icon-layer',
-      data: placedModels,
-      pickable: true,
-      iconAtlas: iconAtlas.toDataURL(),
-      iconMapping,
-      getIcon: d => d.icon,
-      getPosition: d => d.coordinates,
-      getSize: d => d.size || 64,
-      sizeScale: 1,
-      onClick: (info) => {
-        if (info.object) {
-          const index = placedModels.findIndex(m => m.id === info.object.id);
-          setSelectedModelIndex(index);
-        }
-      },
-    });
+        const iconLayer = new IconLayer({
+          id: 'icon-layer',
+          data: placedModels,
+          pickable: true,
+          iconAtlas: canvas.toDataURL(),
+          iconMapping,
+          getIcon: d => d.image,
+          getPosition: d => d.coordinates,
+          getSize: d => d.size || 64,
+          sizeScale: 1,
+          onClick: (info) => {
+            if (info.object) {
+              const index = placedModels.findIndex(m => m.id === info.object.id);
+              setSelectedModelIndex(index);
+            }
+          },
+        });
 
-    overlayRef.current.setProps({ layers: [iconLayer] });
+        overlayRef.current.setProps({ layers: [iconLayer] });
+      } catch (error) {
+        console.error('Error loading images for icons:', error);
+      }
+    };
+
+    loadImagesAndCreateLayer();
     console.log('[PlanningMode] Layers updated with icon layer');
   }, [placedModels]);
 
@@ -443,7 +457,12 @@ const PlanningMode = () => {
             className="flex flex-col items-center cursor-grab hover:bg-cyan-100 rounded p-2 border border-gray-300 transition-colors"
             style={{ userSelect: 'none' }}
           >
-            <div className="text-3xl mb-1">{asset.icon}</div>
+            <img
+              src={asset.image}
+              alt={asset.label}
+              className="w-8 h-8 object-cover rounded mb-1"
+              draggable="false"
+            />
             <span className="text-xs font-bold text-gray-700 text-center">{asset.label}</span>
           </div>
         ))}
@@ -464,7 +483,7 @@ const PlanningMode = () => {
       {/* Maps Container - Flex Grow to take remaining space */}
       <div className="flex-1 flex relative h-full">
         {/* 2D Google Map - Left Side */}
-        <div className="basis-1/2 h-full relative border-r-4 border-black">
+        <div className="basis-1/2 h-full relative border-r-4 border-gray-100">
           <div className="absolute top-4 left-4 bg-white/95 px-3 py-1.5 rounded shadow-lg z-10 border border-gray-200">
             <span className="text-sm font-bold text-gray-800">2D Map</span>
           </div>
@@ -476,7 +495,7 @@ const PlanningMode = () => {
         </div>
 
         {/* 3D Cesium Map - Right Side */}
-        <div className="basis-1/2 h-full relative border-l-4 border-black">
+        <div className="basis-1/2 h-full relative border-l-4 border-gray-100">
           <div className="absolute top-4 left-4 bg-white/95 px-3 py-1.5 rounded shadow-lg z-10 border border-gray-200">
             <span className="text-sm font-bold text-gray-800">3D Photorealistic Map</span>
           </div>
@@ -572,28 +591,54 @@ const PlanningMode = () => {
               ) : (
                 <div className="space-y-6">
                   {/* Summary Metric Cards */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                      <p className="text-xs text-gray-500 uppercase font-bold">Base Temp</p>
-                      <p className="text-2xl font-bold text-gray-800">{insightsData?.base_temp}°C</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                      <p className="text-xs text-gray-500 uppercase font-bold">Projected</p>
-                      <div className="flex items-baseline gap-1">
-                        <p className="text-2xl font-bold text-blue-600">{insightsData?.projected_temp}°C</p>
-                      </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                      <p className="text-xs text-gray-500 uppercase font-bold">Impact</p>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Total Change</p>
                       <p className={`text-2xl font-bold ${insightsData?.net_change < 0 ? 'text-green-500' : 'text-red-500'}`}>
                         {insightsData?.net_change > 0 ? '+' : ''}{insightsData?.net_change}°C
                       </p>
                     </div>
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                      <p className="text-xs text-gray-500 uppercase font-bold">Assets</p>
+                      <p className="text-xs text-gray-500 uppercase font-bold">Assets Analyzed</p>
                       <p className="text-2xl font-bold text-gray-800">{placedModels.length}</p>
                     </div>
                   </div>
+
+                  {/* Observed Local Factors */}
+                  {insightsData?.factors && (
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                      <h4 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2">
+                        <span>🛰️</span> LOCAL SATELLITE OBSERVED DATA (5km Radius)
+                      </h4>
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-2xl mb-1">🌳</span>
+                          <span className="text-xs text-gray-600 font-semibold mb-1">Tree Cooling</span>
+                          <span className={`text-lg font-bold ${insightsData.factors.tree < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                            {insightsData.factors.tree > 0 ? '+' : ''}{insightsData.factors.tree}°C
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-2xl mb-1">💧</span>
+                          <span className="text-xs text-gray-600 font-semibold mb-1">Water Cooling</span>
+                          <span className={`text-lg font-bold ${insightsData.factors.water < 0 ? 'text-blue-600' : 'text-gray-600'}`}>
+                            {insightsData.factors.water > 0 ? '+' : ''}{insightsData.factors.water}°C
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-2xl mb-1">🏙️</span>
+                          <span className="text-xs text-gray-600 font-semibold mb-1">Urban Heating</span>
+                          <span className={`text-lg font-bold ${insightsData.factors.built > 0 ? 'text-red-500' : 'text-gray-600'}`}>
+                            {insightsData.factors.built > 0 ? '+' : ''}{insightsData.factors.built}°C
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-3 text-center opacity-80">
+                        *Differences compared to Regional Average ({insightsData?.base_temp}°C)
+                      </p>
+                    </div>
+                  )}
 
                   {/* AI Analysis Text */}
                   <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-100">

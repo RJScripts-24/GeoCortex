@@ -443,47 +443,96 @@ def planning_analysis():
         if not lat or not lng:
             return jsonify({"error": "Coordinates required"}), 400
             
-        # 1. Get Base LST from Earth Engine (similar to chatbot logic)
-        current_year = 2024
-        point = ee.Geometry.Point([lng, lat])
-        image = ee.ImageCollection('MODIS/061/MOD11A2') \
-            .filter(ee.Filter.date(f'{current_year}-01-01', f'{current_year}-12-31')) \
-            .select('LST_Day_1km') \
-            .mean()
-            
-        base_temp_c = None
-        try:
-            lst_value = image.sample(point, scale=1000).first().get('LST_Day_1km').getInfo()
-            if lst_value is not None and lst_value > 0:
-                temperature_k = lst_value * 0.02
-                base_temp_c = temperature_k - 273.15
-        except Exception as e:
-            print(f"EE Error: {e}")
-            # Fallback if EE fails or no data
-            base_temp_c = 30.0 
-
-        # 2. Calculate Impact
-        impact_map = {
-            'Tree': -0.5,
-            'Plant': -0.2,
-            'Pond': -1.0,
-            'Building': 0.5,
-            'Road': 0.8
-        }
+        # 1. Get Regional Stats from Earth Engine (5km radius)
+        print(f"[DEBUG] Fetching regional stats for {lat}, {lng}")
+        region_geometry = ee.Geometry.Point([lng, lat]).buffer(5000) # 5km radius
         
+        # Load LST (Latest available year)
+        lst_year = 2023 # Use 2023 for stability or current year
+        lst_image = ee.ImageCollection('MODIS/061/MOD11A2') \
+            .filter(ee.Filter.date(f'{lst_year}-01-01', f'{lst_year}-12-31')) \
+            .select('LST_Day_1km') \
+            .mean() \
+            .multiply(0.02).subtract(273.15) # Convert to Celsius
+            
+        # Load Land Cover (ESA WorldCover 2021)
+        # Class mapping: 10=Tree, 50=Built-up, 80=Water
+        landcover = ee.ImageCollection("ESA/WorldCover/v200").first()
+        
+        # Calculate Mean LST for the whole region
+        regional_stats = lst_image.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region_geometry,
+            scale=1000,
+            maxPixels=1e9
+        )
+        regional_mean_temp = regional_stats.get('LST_Day_1km').getInfo()
+        
+        # Calculate Mean LST for specific masks
+        def get_class_mean(class_val):
+            mask = landcover.eq(class_val)
+            masked_lst = lst_image.updateMask(mask)
+            stats = masked_lst.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=region_geometry,
+                scale=1000,
+                maxPixels=1e9
+            )
+            return stats.get('LST_Day_1km').getInfo()
+
+        tree_mean = get_class_mean(10)
+        water_mean = get_class_mean(80)
+        built_mean = get_class_mean(50)
+        
+        # Fallbacks if data is missing (e.g., no water in 5km)
+        if regional_mean_temp is None: regional_mean_temp = 30.0
+        if tree_mean is None: tree_mean = regional_mean_temp - 2.0
+        if water_mean is None: water_mean = regional_mean_temp - 3.0
+        if built_mean is None: built_mean = regional_mean_temp + 2.0
+        
+        # Calculate Factors (Impact relative to regional average)
+        # Negative = Cooling, Positive = Heating
+        tree_factor = tree_mean - regional_mean_temp
+        water_factor = water_mean - regional_mean_temp
+        built_factor = built_mean - regional_mean_temp
+        
+        # Add slight damping for single assets (we aren't planting a whole forest pixel)
+        # But we want to show the POTENTIAL of that asset type in this region.
+        # Let's use the full factor as "Local Efficiency" but scale slightly for total project impact if count is low.
+        
+        print(f"[DEBUG] Stats: Region={regional_mean_temp:.2f}, Tree={tree_mean:.2f}, Water={water_mean:.2f}, Built={built_mean:.2f}")
+        
+        # 2. Calculate Total Impact
         total_impact = 0
         item_details = {}
+        
+        asset_map = {
+            'Tree': tree_factor,
+            'Plant': tree_factor * 0.5, # Plants are less effective than trees
+            'Pond': water_factor,
+            'Building': built_factor,
+            'Road': built_factor * 1.2 # Roads often hotter than general built-up (asphalt)
+        }
         
         for item in items:
             itype = item.get('label')
             if not itype: continue
             
-            impact = impact_map.get(itype, 0)
+            # Use the calculated local factor
+            # We scale it down because one asset != one 1km pixel
+            # But we accumulated it. Let's say 1 asset provides 0.05% of the pixel's potential differentiation?
+            # Or just sum them up up to a cap?
+            # Let's use a weight of 0.1 for visibility.
+            
+            raw_factor = asset_map.get(itype, 0)
+            impact = raw_factor * 0.1 
+            
             total_impact += impact
             item_details[itype] = item_details.get(itype, 0) + 1
             
-        total_impact = max(min(total_impact, 8.0), -8.0)
-        projected_temp_c = base_temp_c + total_impact
+        # Cap the total change to reasonable limits (e.g., +/- 5 degrees C)
+        total_impact = max(min(total_impact, 5.0), -5.0)
+        projected_temp_c = regional_mean_temp + total_impact
         
         # 3. Generate AI Report via Groq
         api_key = os.getenv("GROQ_API_KEY")
@@ -494,17 +543,17 @@ def planning_analysis():
             item_summary = ", ".join([f"{v} {k}(s)" for k, v in item_details.items()])
             
             prompt = (
-                f"Generate a professional environmental impact report for a planned urban development.\\n"
-                f"Location Coordinates: {lat}, {lng}\\n"
-                f"Current Baseline Land Surface Temperature (LST): {base_temp_c:.2f} deg C\\n"
-                f"Planned Infrastructure: {item_summary}\\n"
-                f"Projected LST Change: {total_impact:+.2f} deg C\\n"
-                f"Projected New LST: {projected_temp_c:.2f} deg C\\n\\n"
-                "Please provide:\\n"
-                "1. **Impact Analysis**: How the placed items specifically affect the local microclimate.\\n"
-                "2. **Sustainability Assessment**: Is this a positive or negative change? Why?\\n"
-                "3. **Recommendations**: 2-3 specific suggestions to further improve thermal comfort based on these changes.\\n\\n"
-                "Format the response in clear HTML-ready paragraphs with bold headers. Use emojis where appropriate. Keep it concise but professional."
+                f"Generate an environmental impact report for a development at {lat}, {lng}.\\n"
+                f"Regional Average Temp: {regional_mean_temp:.2f}°C\\n"
+                f"Local Vegetation Cooling Potential: {tree_factor:+.2f}°C (Observed difference between trees and avg)\\n"
+                f"Local Water Cooling Potential: {water_factor:+.2f}°C\\n"
+                f"Local Urban Heating Effect: {built_factor:+.2f}°C\\n"
+                f"Planned Assets: {item_summary}\\n"
+                f"Estimated Net Temp Change: {total_impact:+.2f}°C\\n\\n"
+                "Provide:\n"
+                "1. **Local Climate Context**: Interpret the observed cooling/heating potentials (e.g., 'Trees in this area are highly effective...').\n"
+                "2. **Project Impact**: How the specific planned assets change the microclimate.\n"
+                "3. **Recommendation**: One data-driven suggestion based on the factors."
             )
             
             try:
@@ -518,9 +567,14 @@ def planning_analysis():
                 ai_insights = "Could not generate AI insights at this time."
 
         return jsonify({
-            "base_temp": round(base_temp_c, 2),
+            "base_temp": round(regional_mean_temp, 2),
             "projected_temp": round(projected_temp_c, 2),
             "net_change": round(total_impact, 2),
+            "factors": {
+                "tree": round(tree_factor, 2),
+                "water": round(water_factor, 2),
+                "built": round(built_factor, 2)
+            },
             "item_summary": item_details,
             "ai_report_text": ai_insights
         })

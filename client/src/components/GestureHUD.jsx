@@ -7,15 +7,15 @@ const GestureHUD = () => {
   if (!gesture || gesture === 'None') return null;
 
   const getFeedback = () => {
-    switch(gesture) {
+    switch (gesture) {
       case 'Open_Palm':
-        return { text: 'MOVEMENT PAUSED', color: 'text-yellow-400', border: 'border-yellow-400' };
+        return { text: 'MOVEMENT PAUSED', color: 'text-amber-600', border: 'border-amber-500' };
       case 'Closed_Fist':
-        return { text: 'ZOOM ACTIVE', color: 'text-red-500', border: 'border-red-500' };
+        return { text: 'ZOOM ACTIVE', color: 'text-red-600', border: 'border-red-500' };
       case 'Pointing_Up':
-        return { text: 'RESET VIEW', color: 'text-cyan-400', border: 'border-cyan-400' };
+        return { text: 'RESET VIEW', color: 'text-cyan-700', border: 'border-cyan-600' };
       default:
-        return { text: gesture.toUpperCase(), color: 'text-white', border: 'border-white' };
+        return { text: gesture.toUpperCase(), color: 'text-slate-700', border: 'border-gray-200' };
     }
   };
 
@@ -23,7 +23,7 @@ const GestureHUD = () => {
 
   return (
     <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-40 pointer-events-none">
-      <div className={`flex items-center gap-3 px-6 py-2 bg-black/60 backdrop-blur-sm rounded-full border ${border} transition-all duration-300 animate-in fade-in slide-in-from-top-4`}>
+      <div className={`flex items-center gap-3 px-6 py-2 bg-white/80 backdrop-blur-md rounded-full border shadow-lg ${border} transition-all duration-300 animate-in fade-in slide-in-from-top-4`}>
         <div className={`w-3 h-3 rounded-full animate-ping ${color.replace('text', 'bg')}`} />
         <span className={`font-mono font-bold tracking-widest ${color}`}>
           {text}

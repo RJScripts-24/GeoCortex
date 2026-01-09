@@ -16,226 +16,243 @@ export function generateSolarPDF(result, lat, lng) {
 }
 import { jsPDF } from 'jspdf';
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyC6V4mJQ9lANXKW0GVdgSxW0EZ10wqftiw';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyB6KRRVrmndX4vPTdg36u3qU2r1MFfmI6X8';
 
 // Clean text from emojis
 const cleanEmojis = (text) => {
   return text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\uFE0F]|[\u{1F1E6}-\u{1F1FF}]/gu, '');
 };
 
-// Fetch image and convert to base64
+// Robust image fetch with error logging
 const fetchImageAsBase64 = async (url) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'Anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.error('Failed to fetch map image:', err);
+    return null;
+  }
 };
 
-export const generatePDF = async (analysisText, location, mapImage, chatMessages = []) => {
+export const generatePDF = async (analysisText, location, mapImage, chatMessages = [], analysisView = null) => {
   const doc = new jsPDF();
-  let y = 20;
+  let y = 25;
 
-  // Title
+  // Helper for page breaks
+  const checkPageBreak = (neededSpace) => {
+    if (y + neededSpace > 275) {
+      doc.addPage();
+      y = 25;
+    }
+  };
+
+  // ========== HEADER ==========
+  doc.setFillColor(6, 182, 212);
+  doc.rect(0, 0, 210, 35, 'F');
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(6, 182, 212);
-  doc.text("GEOCORTEX AI ANALYSIS REPORT", 20, y);
-  y += 12;
+  doc.setFontSize(20);
+  doc.setTextColor(255, 255, 255);
+  doc.text("GeoCortex AI Analysis Report", 105, 18, { align: "center" });
 
-  // Metadata
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(120);
-  doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, y);
-  y += 5;
-  doc.text("Source: Landsat 9 Satellite Data", 20, y);
+  doc.text(`Generated: ${new Date().toLocaleString()}  |  Source: Landsat 9`, 105, 28, { align: "center" });
+
+  y = 50;
+
+  // ========== MAP SECTION ==========
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(30, 41, 59);
+  doc.text("Location Overview", 20, y);
   y += 8;
 
-  // Line
-  doc.setDrawColor(6, 182, 212);
-  doc.line(20, y, 190, y);
+  let finalMapImage = null;
+  if (mapImage && mapImage.startsWith('data:image')) {
+    finalMapImage = mapImage;
+  } else if (location || analysisView) {
+    const lat = analysisView?.lat || location.lat;
+    const lng = analysisView?.lng || location.lng;
+    const zoom = analysisView?.zoom || 14;
+    const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoom}&size=600x300&maptype=satellite&markers=color:red%7C${location?.lat || lat},${location?.lng || lng}&key=${GOOGLE_MAPS_API_KEY}`;
+    finalMapImage = await fetchImageAsBase64(mapUrl);
+  }
+
+  if (finalMapImage) {
+    try {
+      // Map with subtle border
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.rect(20, y, 170, 75);
+      doc.addImage(finalMapImage, 'JPEG', 20, y, 170, 75);
+      y += 78;
+
+      if (location) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(120);
+        doc.text(`Lat: ${location.lat.toFixed(5)}  |  Lng: ${location.lng.toFixed(5)}`, 20, y);
+        y += 12;
+      }
+    } catch (e) {
+      doc.setTextColor(200, 0, 0);
+      doc.setFontSize(9);
+      doc.text("Map image could not be loaded.", 20, y);
+      y += 15;
+    }
+  } else {
+    doc.setTextColor(150);
+    doc.setFontSize(9);
+    doc.text("Map unavailable.", 20, y);
+    y += 15;
+  }
+
+  // ========== EXTRACT DATA ==========
+  const extractValueAfterLabel = (html, label) => {
+    if (!html) return null;
+    const labelIdx = html.indexOf(label);
+    if (labelIdx === -1) return null;
+    const afterLabel = html.substring(labelIdx);
+    const match = afterLabel.match(/<\/div>\s*<div[^>]*>(.*?)<\/div>/);
+    return match ? match[1].replace(/<[^>]+>/g, '').trim() : null;
+  };
+
+  const locationName = extractValueAfterLabel(analysisText, '📍 Location:') || "Unknown Location";
+  const temperature = extractValueAfterLabel(analysisText, '🔥 Land Surface Temperature:') || "N/A";
+
+  let insights = "";
+  const insightsIdx = analysisText?.indexOf('🤖 AI Insights:') ?? -1;
+  if (insightsIdx !== -1) {
+    let rawInsights = analysisText.substring(insightsIdx);
+    rawInsights = rawInsights.replace(/<div[^>]*>.*?AI Insights:.*?<\/div>/, '');
+    rawInsights = rawInsights.replace(/<br\s*\/?>/gi, '\n');
+    insights = rawInsights.replace(/<[^>]+>/g, '');
+    const tempEl = document.createElement('div');
+    tempEl.innerHTML = insights;
+    insights = (tempEl.textContent || tempEl.innerText || '').trim();
+  }
+
+  // ========== THERMAL DATA CARD ==========
+  checkPageBreak(50);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(30, 41, 59);
+  doc.text("Thermal Analysis Summary", 20, y);
   y += 10;
 
-  // Add map image using Google Static Maps API
-  if (location) {
-    try {
-      const zoom = 14;
-      const size = '600x400';
-      const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${location.lat},${location.lng}&zoom=${zoom}&size=${size}&maptype=satellite&markers=color:red%7C${location.lat},${location.lng}&key=${GOOGLE_MAPS_API_KEY}`;
+  // Card background
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(20, y, 170, 35, 3, 3, 'F');
 
-      // Fetch and convert image to base64
-      const imageData = await fetchImageAsBase64(mapUrl);
-      doc.addImage(imageData, 'JPEG', 20, y, 170, 100);
-      y += 105;
+  // Left column - Location
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text("LOCATION", 28, y + 10);
 
-      doc.setFontSize(8);
-      doc.setTextColor(100);
-      doc.setFont("helvetica", "italic");
-      doc.text(`Analysis Location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)} (1km radius coverage)`, 20, y);
-      y += 10;
-      doc.setFont("helvetica", "normal");
-    } catch (err) {
-      console.error('Map load error:', err);
-      // Continue without map if it fails
-    }
-  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  const locText = doc.splitTextToSize(locationName, 80);
+  doc.text(locText[0], 28, y + 20);
 
-  // Parse and format analysis text
-  const cleaned = cleanEmojis(analysisText || "No data");
-  const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l);
+  // Right column - Temperature
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text("SURFACE TEMPERATURE", 115, y + 10);
 
-  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(234, 88, 12); // Orange
+  doc.text(temperature, 115, y + 22);
 
-  for (const line of lines) {
-    if (y > 270) {
-      doc.addPage();
-      y = 20;
-    }
+  y += 50;
 
-    // Title: Urban Heat Analysis
-    if (line.includes('Urban Heat Analysis')) {
-      y += 3;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text('Urban Heat Analysis', 20, y);
-      y += 10;
-      continue;
-    }
+  // ========== AI INSIGHTS ==========
+  if (insights && insights.length > 10) {
+    checkPageBreak(60);
 
-    // Location section
-    if (line.startsWith('Location:')) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text('Location:', 20, y);
-      y += 6;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      const loc = line.replace('Location:', '').trim();
-      const wrapped = doc.splitTextToSize(loc, 170);
-      doc.text(wrapped, 20, y);
-      y += wrapped.length * 5 + 3;
-      continue;
-    }
-
-    // Coordinates
-    if (line.includes('Coordinates:')) {
-      doc.setFontSize(9);
-      doc.setTextColor(100);
-      doc.text(line, 20, y);
-      y += 5;
-      doc.setTextColor(0);
-      continue;
-    }
-
-    // Temperature
-    if (line.includes('Land Surface Temperature:')) {
-      y += 2;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text('Land Surface Temperature:', 20, y);
-      y += 6;
-      const temp = line.split(':')[1]?.trim() || 'N/A';
-      doc.setFontSize(13);
-      doc.setTextColor(245, 158, 66);
-      doc.text(temp, 20, y);
-      y += 8;
-      doc.setTextColor(0);
-      doc.setFont("helvetica", "normal");
-      continue;
-    }
-
-    // Zone/Status
-    if (line.includes('Zone:') || line.includes('Status:')) {
-      doc.setFontSize(10);
-      doc.text(line, 20, y);
-      y += 6;
-      continue;
-    }
-
-    // AI Insights
-    if (line.includes('AI Insights:')) {
-      y += 3;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text('AI Insights:', 20, y);
-      y += 8;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      continue;
-    }
-
-    // Numbered items (1. 2. 3.)
-    const numMatch = line.match(/^(\d+)\.\s*(.+)$/);
-    if (numMatch) {
-      y += 3;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      const wrapped = doc.splitTextToSize(line, 170);
-      doc.text(wrapped, 20, y);
-      y += wrapped.length * 5 + 4;
-      doc.setFont("helvetica", "normal");
-      continue;
-    }
-
-    // Bullets
-    if (line.startsWith('*')) {
-      const text = line.substring(1).trim();
-      const wrapped = doc.splitTextToSize(text, 160);
-      doc.setFontSize(9);
-      doc.text('•', 25, y);
-      doc.text(wrapped, 30, y);
-      y += wrapped.length * 4.5 + 2;
-      continue;
-    }
-
-    // Regular text
-    doc.setFontSize(10);
-    const wrapped = doc.splitTextToSize(line, 170);
-    doc.text(wrapped, 20, y);
-    y += wrapped.length * 5 + 3;
-  }
-
-  // Chatbot Conversation Section
-  if (chatMessages && chatMessages.length > 0) {
-    if (y > 250) {
-      doc.addPage();
-      y = 20;
-    }
-    y += 8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
-    doc.setTextColor(6, 182, 212);
-    doc.text("AI Chatbot Conversation", 20, y);
-    y += 8;
+    doc.setTextColor(30, 41, 59);
+    doc.text("AI Consultant Insights", 20, y);
+    y += 10;
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(0);
-    for (const msg of chatMessages) {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      const prefix = msg.role === 'user' ? 'You: ' : 'AI: ';
-      const wrapped = doc.splitTextToSize(prefix + (msg.text || ''), 170);
-      doc.text(wrapped, 20, y);
-      y += wrapped.length * 5 + 2;
+    doc.setTextColor(55, 65, 81);
+
+    const cleanedInsights = cleanEmojis(insights).trim();
+    const lines = doc.splitTextToSize(cleanedInsights, 170);
+
+    for (let i = 0; i < lines.length; i++) {
+      checkPageBreak(6);
+      doc.text(lines[i], 20, y);
+      y += 5.5;
     }
+    y += 10;
   }
 
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text("CONFIDENTIAL - GEOCORTEX COMMAND CENTER", 105, 285, { align: "center" });
+  // ========== CHAT HISTORY ==========
+  if (chatMessages && chatMessages.length > 0) {
+    checkPageBreak(40);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(30, 41, 59);
+    doc.text("Conversation Log", 20, y);
+    y += 12;
+
+    chatMessages.forEach((msg) => {
+      checkPageBreak(20);
+
+      const isUser = msg.role === 'user';
+
+      // Role label
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(isUser ? 100 : 6, isUser ? 116 : 182, isUser ? 139 : 212);
+      doc.text(isUser ? 'You' : 'Gemini AI', 20, y);
+      y += 5;
+
+      // Message content
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      const msgText = cleanEmojis(msg.text || '');
+      const wrapped = doc.splitTextToSize(msgText, 165);
+
+      wrapped.forEach((line) => {
+        checkPageBreak(5);
+        doc.text(line, 25, y);
+        y += 4.5;
+      });
+      y += 6;
+    });
+  }
+
+  // ========== FOOTER ON ALL PAGES ==========
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(220);
+    doc.line(20, 282, 190, 282);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(140);
+    doc.text(`Page ${i} of ${pageCount}`, 20, 288);
+    doc.text("GeoCortex Command Center  •  Confidential", 190, 288, { align: "right" });
+  }
 
   doc.save('GeoCortex_Report.pdf');
 };
@@ -297,20 +314,15 @@ export const generatePlanningPDF = async (data, mapImage) => {
 
   doc.setFontSize(11);
   doc.setTextColor(60);
-  doc.text("Baseline Land Surface Temp (LST):", 30, y + 12);
-  doc.text("Projected New LST:", 30, y + 24);
-  doc.text("Net Temperature Change:", 30, y + 36);
+  doc.text("Net Temperature Change:", 30, y + 24);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(0);
-  doc.text(`${data.base_temp?.toFixed(2) || 'N/A'} °C`, 140, y + 12);
-  doc.text(`${data.projected_temp?.toFixed(2) || 'N/A'} °C`, 140, y + 24);
+  doc.setFontSize(14); // Slightly larger for emphasis
 
   const change = data.net_change || 0;
   const color = change < 0 ? [34, 197, 94] : (change > 0 ? [239, 68, 68] : [100, 116, 139]);
   doc.setTextColor(...color);
-  doc.text(`${change > 0 ? '+' : ''}${change.toFixed(2)} °C`, 140, y + 36);
+  doc.text(`${change > 0 ? '+' : ''}${change.toFixed(2)} °C`, 140, y + 24);
 
   y += 60;
 
