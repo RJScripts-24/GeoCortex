@@ -30,7 +30,25 @@ const App = () => {
   const [currentLocationName, setCurrentLocationName] = React.useState('');
   const [showDronePopup, setShowDronePopup] = React.useState(false);
   const [showGestureInstructions, setShowGestureInstructions] = React.useState(true);
+  const [showMobilePopup, setShowMobilePopup] = React.useState(false);
+  const [mobilePopupDismissed, setMobilePopupDismissed] = React.useState(false);
   const syncInProgressRef = React.useRef(false);
+
+  // Detect mobile viewport and show popup
+  React.useEffect(() => {
+    const checkMobile = () => {
+      const isMobile = window.innerWidth < 768;
+      if (isMobile && !mobilePopupDismissed) {
+        setShowMobilePopup(true);
+      } else {
+        setShowMobilePopup(false);
+      }
+    };
+
+    checkMobile(); // Check on mount
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, [mobilePopupDismissed]);
 
   // Handle view changes from either map
   const handleViewChange = (view) => {
@@ -127,8 +145,11 @@ const App = () => {
 
                 {/* Map Area */}
                 <div className="flex-1 w-full relative pt-[64px] bg-slate-100">
-                  <div className="flex w-full h-full">
-                    <div className="w-1/2 h-full relative border-r border-white/20">
+                  {/* Mobile: Column layout with Controls between maps */}
+                  {/* Desktop: Row layout with Controls floating at bottom */}
+                  <div className="flex flex-col md:flex-row w-full h-full">
+                    {/* 2D Map - Top on mobile, Left on desktop */}
+                    <div className="w-full md:w-1/2 h-[45%] md:h-full relative border-b md:border-b-0 md:border-r border-white/20">
                       <MapViewer
                         mapView={mapView}
                         onViewChange={handleViewChange}
@@ -136,7 +157,14 @@ const App = () => {
                         setPlanningTrigger={setPlanningTrigger}
                       />
                     </div>
-                    <div className="w-1/2 h-full relative">
+
+                    {/* Controls - Middle on mobile (within flex flow), hidden here on desktop */}
+                    <div className="block md:hidden w-full h-[10%] relative z-50">
+                      <Controls isMobile={true} />
+                    </div>
+
+                    {/* 3D Map - Bottom on mobile, Right on desktop */}
+                    <div className="w-full md:w-1/2 h-[45%] md:h-full relative">
                       <CesiumViewer
                         mapView={mapView}
                         onViewChange={handleViewChange}
@@ -148,7 +176,10 @@ const App = () => {
 
                   {/* Floating Elements on top of Map */}
                   <GestureHUD />
-                  <Controls />
+                  {/* Controls - Desktop only (floating at bottom) */}
+                  <div className="hidden md:block">
+                    <Controls isMobile={false} />
+                  </div>
                   <GestureCam />
 
                   {/* Cinematic Preview Overlay */}
@@ -225,6 +256,82 @@ const App = () => {
                   {/* Gesture Instructions Popup on Load */}
                   {showGestureInstructions && (
                     <GestureInstructionsPopup onClose={() => setShowGestureInstructions(false)} />
+                  )}
+
+                  {/* Mobile Device Popup */}
+                  {showMobilePopup && (
+                    <div
+                      style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10001,
+                        backdropFilter: 'blur(4px)',
+                      }}
+                      onClick={() => {
+                        setShowMobilePopup(false);
+                        setMobilePopupDismissed(true);
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%)',
+                          borderRadius: '16px',
+                          padding: '28px',
+                          maxWidth: '340px',
+                          margin: '20px',
+                          boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+                          border: '1px solid rgba(6, 182, 212, 0.2)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+                          <span style={{ fontSize: '2.5rem', marginRight: '14px' }}>💻</span>
+                          <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 'bold', color: '#1e293b' }}>
+                            Best on Desktop
+                          </h3>
+                        </div>
+                        <p style={{ fontSize: '0.95rem', lineHeight: '1.7', color: '#475569', marginBottom: '20px' }}>
+                          To experience <strong style={{ color: '#06b6d4' }}>all features</strong> including gesture controls,
+                          AI analysis, and interactive planning tools, please use a <strong style={{ color: '#0ea5e9' }}>laptop or desktop</strong>.
+                        </p>
+                        <button
+                          style={{
+                            width: '100%',
+                            padding: '14px',
+                            background: 'linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '10px',
+                            fontSize: '1rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(6, 182, 212, 0.3)',
+                            transition: 'transform 0.2s, box-shadow 0.2s',
+                          }}
+                          onClick={() => {
+                            setShowMobilePopup(false);
+                            setMobilePopupDismissed(true);
+                          }}
+                          onMouseOver={(e) => {
+                            e.target.style.transform = 'scale(1.02)';
+                            e.target.style.boxShadow = '0 6px 16px rgba(6, 182, 212, 0.4)';
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.transform = 'scale(1)';
+                            e.target.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.3)';
+                          }}
+                        >
+                          Continue Anyway
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

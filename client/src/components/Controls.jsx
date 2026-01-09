@@ -1,16 +1,22 @@
 import React from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 
-const Controls = () => {
+const Controls = ({ isMobile = false }) => {
   const { year, setYear, activeLayer, setActiveLayer } = useGlobalStore();
 
   const handleYearChange = (e) => {
     setYear(parseInt(e.target.value));
   };
 
+  // Mobile: relative positioning within flex layout, fills parent container
+  // Desktop: absolute positioning at bottom center
+  const containerClasses = isMobile
+    ? "relative w-full h-full flex items-center justify-center z-50"
+    : "absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] max-w-5xl z-50";
+
   return (
-    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[90%] max-w-5xl z-50">
-      <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 px-8 py-4 flex flex-col gap-4">
+    <div className={containerClasses}>
+      <div className={`bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 flex flex-col gap-4 ${isMobile ? 'px-4 py-2 w-[95%]' : 'px-8 py-4'}`}>
 
         {/* Header Row: Title & Toggles */}
         <div className="flex items-center justify-between">
