@@ -4,12 +4,33 @@ import useHandGesture from '../hooks/useHandGesture';
 
 const GestureCam = () => {
   const videoRef = useRef(null);
-  const { setGesture } = useGlobalStore();
+  const { setGesture, setActiveLayer, activeLayer } = useGlobalStore();
+  const lastModeSwitchRef = useRef(0);
+  const DEBOUNCE_MS = 1000; // 1 second debounce to prevent rapid switching
 
   const onGestureDetected = (result) => {
     if (result && result.gestures.length > 0) {
       const categoryName = result.gestures[0][0].categoryName;
       setGesture(categoryName);
+
+      // Mode switching logic with debounce
+      const now = Date.now();
+      if (now - lastModeSwitchRef.current < DEBOUNCE_MS) {
+        return; // Skip if within debounce period
+      }
+
+      // Closed Fist -> Thermal mode
+      if (categoryName === 'Closed_Fist' && activeLayer !== 'heat') {
+        setActiveLayer('heat');
+        lastModeSwitchRef.current = now;
+        console.log('[GestureCam] Switching to Thermal mode via gesture');
+      }
+      // Pointing Up -> Satellite mode
+      else if (categoryName === 'Pointing_Up' && activeLayer !== 'none') {
+        setActiveLayer('none');
+        lastModeSwitchRef.current = now;
+        console.log('[GestureCam] Switching to Satellite mode via gesture');
+      }
     } else {
       setGesture('None');
     }

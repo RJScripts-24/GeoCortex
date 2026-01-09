@@ -11,9 +11,9 @@ const GestureHUD = () => {
       case 'Open_Palm':
         return { text: 'MOVEMENT PAUSED', color: 'text-amber-600', border: 'border-amber-500' };
       case 'Closed_Fist':
-        return { text: 'ZOOM ACTIVE', color: 'text-red-600', border: 'border-red-500' };
+        return { text: 'THERMAL MODE', color: 'text-orange-600', border: 'border-orange-500' };
       case 'Pointing_Up':
-        return { text: 'RESET VIEW', color: 'text-cyan-700', border: 'border-cyan-600' };
+        return { text: 'SATELLITE MODE', color: 'text-green-600', border: 'border-green-500' };
       default:
         return { text: gesture.toUpperCase(), color: 'text-slate-700', border: 'border-gray-200' };
     }

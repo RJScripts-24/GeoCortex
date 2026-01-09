@@ -26,6 +26,7 @@ const App = () => {
   const [planningTrigger, setPlanningTrigger] = React.useState(false);
   const [showCinematicPreview, setShowCinematicPreview] = React.useState(false);
   const [currentLocationName, setCurrentLocationName] = React.useState('');
+  const [showDronePopup, setShowDronePopup] = React.useState(false);
   const syncInProgressRef = React.useRef(false);
 
   // Handle view changes from either map
@@ -62,9 +63,9 @@ const App = () => {
                   <div className="flex items-center gap-6">
                     {/* Brand */}
                     <div className="flex items-center gap-2">
-                      <img 
-                        src="/Geocortex Logo.png" 
-                        alt="GeoCortex Logo" 
+                      <img
+                        src="/Geocortex Logo.png"
+                        alt="GeoCortex Logo"
                         className="h-10 w-auto object-contain"
                       />
                     </div>
@@ -91,16 +92,17 @@ const App = () => {
                         onClick={() => {
                           if (currentLocationName) {
                             setShowCinematicPreview(true);
+                          } else {
+                            setShowDronePopup(true);
                           }
                         }}
-                        disabled={!currentLocationName}
-                        title={!currentLocationName ? "Please search for a location first" : "View Cinematic Aerial Video"}
+                        title={!currentLocationName ? "Search for a location first" : "View Cinematic Aerial Video"}
                         className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-md ${currentLocationName
-                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-lg hover:scale-105 active:scale-95'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-lg hover:scale-105 active:scale-95'
+                          : 'bg-gray-200 text-gray-500 hover:bg-gray-300 cursor-pointer'
                           }`}
                       >
-                        <svg className={`w-4 h-4 ${currentLocationName ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        <svg className={`w-4 h-4 ${currentLocationName ? 'text-white' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                         Drone View
                       </button>
                     </div>
@@ -150,6 +152,62 @@ const App = () => {
                           targetAddress={currentLocationName}
                           onClose={() => setShowCinematicPreview(false)}
                         />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Drone View Search Prompt Popup */}
+                  {showDronePopup && (
+                    <div
+                      style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                      }}
+                      onClick={() => setShowDronePopup(false)}
+                    >
+                      <div
+                        style={{
+                          background: 'white',
+                          borderRadius: '12px',
+                          padding: '24px',
+                          maxWidth: '400px',
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+                          <span style={{ fontSize: '2rem', marginRight: '12px' }}>🔍</span>
+                          <h3 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#333' }}>
+                            Search Location First
+                          </h3>
+                        </div>
+                        <p style={{ fontSize: '1rem', lineHeight: '1.6', color: '#555', marginBottom: '20px' }}>
+                          Please use the <strong style={{ color: '#06b6d4' }}>search bar</strong> to find a location before viewing the cinematic drone footage.
+                        </p>
+                        <button
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            background: '#06b6d4',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '1rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setShowDronePopup(false)}
+                        >
+                          Got it
+                        </button>
                       </div>
                     </div>
                   )}

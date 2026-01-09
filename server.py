@@ -8,7 +8,29 @@ from dotenv import load_dotenv
 import requests
 from solar_engine import analyze_solar_potential, analyze_solar_potential_with_ai
 
-load_dotenv()
+# Load .env from the same directory as server.py
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+
+# Fix BOM issue: Read file, strip BOM, and write back if needed
+try:
+    with open(env_path, 'r', encoding='utf-8-sig') as f:  # utf-8-sig automatically strips BOM
+        content = f.read()
+    # Check if original file has BOM by reading with regular utf-8
+    with open(env_path, 'rb') as f:
+        raw = f.read(3)
+        if raw.startswith(b'\xef\xbb\xbf'):
+            print("[DEBUG] BOM detected in .env file, creating clean version...")
+            # Write back without BOM
+            with open(env_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print("[DEBUG] .env file cleaned of BOM")
+except Exception as e:
+    print(f"[DEBUG] Error handling .env BOM: {e}")
+
+load_dotenv(env_path)
+print(f"[DEBUG] GROQ_API_KEY present: {bool(os.getenv('GROQ_API_KEY'))}")
+if os.getenv('GROQ_API_KEY'):
+    print(f"[DEBUG] GROQ_API_KEY loaded successfully")
 
 app = Flask(__name__, static_folder='client/dist', static_url_path='')
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -539,7 +561,10 @@ def planning_analysis():
         api_key = os.getenv("GROQ_API_KEY")
         ai_insights = "AI Insights unavailable."
         
-        if api_key:
+        if not api_key:
+            print("[ERROR] GROQ_API_KEY is not set in environment variables")
+            ai_insights = "AI Insights unavailable: GROQ_API_KEY is not configured. Please add it to your .env file."
+        else:
             client = Groq(api_key=api_key)
             item_summary = ", ".join([f"{v} {k}(s)" for k, v in item_details.items()])
             
@@ -564,8 +589,10 @@ def planning_analysis():
                 )
                 ai_insights = response.choices[0].message.content
             except Exception as e:
-                print(f"Groq Error: {e}")
-                ai_insights = "Could not generate AI insights at this time."
+                print(f"[ERROR] Groq API Error: {e}")
+                import traceback
+                traceback.print_exc()
+                ai_insights = f"Could not generate AI insights: {str(e)}"
 
         return jsonify({
             "base_temp": round(regional_mean_temp, 2),
