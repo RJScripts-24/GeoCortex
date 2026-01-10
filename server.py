@@ -33,7 +33,7 @@ if os.getenv('GROQ_API_KEY'):
     print(f"[DEBUG] GROQ_API_KEY loaded successfully")
 
 app = Flask(__name__, static_folder='client/dist', static_url_path='')
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app)  # Enable CORS for all routes - required for Cloud Run + Firebase frontend
 
 # Initialize Earth Engine
 try:
@@ -386,7 +386,8 @@ def analyze_location():
 
 @app.route('/')
 def serve():
-    return send_from_directory(app.static_folder, 'index.html')
+    """Health check endpoint for Cloud Run. Frontend is hosted on Firebase."""
+    return jsonify({"status": "ok", "service": "GeoCortex API"})
 
 
 # Chatbot endpoint for AI consultant
