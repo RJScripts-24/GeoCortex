@@ -21,9 +21,7 @@ COPY server.py solar_engine.py ./
 
 
 
-# Copy .env file for environment variables
-# Note: For production, use Cloud Run environment variables instead
-COPY .env ./
+
 
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
