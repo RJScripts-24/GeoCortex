@@ -71,6 +71,10 @@ except Exception as e:
 def health_check():
     return jsonify({'status': 'online'})
 
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({'pong': True})
+
 # --- Solar analysis endpoint is disabled ---
 # @app.route('/api/analyze_solar', methods=['POST'])
 # def solar_analysis():
