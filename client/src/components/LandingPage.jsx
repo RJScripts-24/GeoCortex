@@ -674,9 +674,6 @@ function KeyFeatures() {
                                 </span>
                             </li>
                         </ul>
-                        <a href="#" className="inline-flex items-center gap-2 text-green-600 dark:text-green-400 hover:gap-3 transition-all duration-300 font-medium">
-                            View Sample Report →
-                        </a>
                     </div>
                     <div>
                         <img

@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+env/
+.eggs
+*.egg-info/
+*.egg
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Frontend (deployed separately to Firebase)
+client/
+node_modules/
+
+# IDX (Project IDX specific)
+.idx/
+
+# Documentation & Assets (not needed for backend)
+*.md
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+Geocortex-architecture.png
+
+# Package manager files (frontend)
+package.json
+package-lock.json
+
+# Local development
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

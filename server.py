@@ -778,4 +778,7 @@ if __name__ == '__main__':
     for rule in app.url_map.iter_rules():
         print(f"{rule.rule} -> {rule.endpoint} [{', '.join(rule.methods)}]")
     print("================================\n")
-    app.run(debug=True, port=5000)
+    
+    # Cloud Run requires listening on 0.0.0.0 and uses PORT env variable
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
