@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend source files
 COPY server.py solar_engine.py ./
 
-# Copy credentials file (required for Earth Engine authentication)
-COPY credentials.json ./
+
+
 
 # Copy .env file for environment variables
 # Note: For production, use Cloud Run environment variables instead
