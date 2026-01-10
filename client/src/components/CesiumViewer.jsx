@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 import { fetchHeatLayer } from '../services/api';
+import { API_BASE_URL } from '../config/api.js';
 import html2canvas from 'html2canvas';
 import EnergyModeCesium from './EnergyModeCesium.jsx';
 
@@ -133,15 +134,20 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
       setHeatTileUrl(null);
       return;
     }
+    console.log('[CesiumViewer] Fetching heat layer for year:', year);
     fetchHeatLayer(year)
       .then((data) => {
+        console.log('[CesiumViewer] Heat layer data received:', data);
         if (data.tileUrl) {
           setHeatTileUrl(data.tileUrl);
         } else {
           setHeatTileUrl(null);
         }
       })
-      .catch(() => setHeatTileUrl(null));
+      .catch((err) => {
+        console.error('[CesiumViewer] Failed to fetch heat layer:', err);
+        setHeatTileUrl(null);
+      });
   }, [year, activeLayer]);
 
   // Add or remove Cesium heatmap imagery layer when heatTileUrl changes
@@ -222,7 +228,7 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
       // Fetch location name even in non-thermal mode
       setIsAnalyzing(true);
       try {
-        const analysisRes = await fetch('/api/analyze', {
+        const analysisRes = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lat, lng })
@@ -248,7 +254,7 @@ const CesiumViewer = ({ mapView, onViewChange, planningTrigger, setPlanningTrigg
     setIsAnalyzing(true);
     try {
       // Fetch Gemini analysis and temperature from backend
-      const analysisRes = await fetch('/api/analyze', {
+      const analysisRes = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng })

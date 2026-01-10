@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
 import { generatePDF } from '../utils/pdfGenerator';
+import { API_BASE_URL } from '../config/api.js';
 
 import Chatbot from './Chatbot';
 
@@ -25,7 +26,7 @@ const Sidebar = () => {
       // Try to get from global store if available
       let y = year;
       try { y = window?.storeYear || year; } catch { }
-      const res = await fetch('/api/chatbot', {
+      const res = await fetch(`${API_BASE_URL}/api/chatbot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

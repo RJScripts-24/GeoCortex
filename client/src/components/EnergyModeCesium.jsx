@@ -2,6 +2,7 @@
 // Handles rectangle drawing, context menu, and solar analysis for Energy Mode
 import { useEffect, useRef, useState } from 'react';
 import { useGlobalStore } from '../context/GlobalStore';
+import { API_BASE_URL } from '../config/api.js';
 
 export default function EnergyModeCesium({ viewer }) {
   const { isEnergyMode, setShowConsultant, setAnalysis, setIsAnalyzing } = useGlobalStore();
@@ -173,7 +174,7 @@ export default function EnergyModeCesium({ viewer }) {
         lng: center.longitude,
         bounds: bounds
       });
-      const response = await fetch('/api/analyze_solar', {
+      const response = await fetch(`${API_BASE_URL}/api/analyze_solar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

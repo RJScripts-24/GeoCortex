@@ -4,6 +4,7 @@ import { BitmapLayer } from "@deck.gl/layers";
 import { TileLayer } from "@deck.gl/geo-layers";
 import { fetchHeatLayer } from "../services/api";
 import { useGlobalStore } from "../context/GlobalStore";
+import { API_BASE_URL } from '../config/api.js';
 
 
 
@@ -28,15 +29,20 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
   // Fetch heatmap tile URL when year changes (for thermal view)
   useEffect(() => {
     if (activeLayer !== 'heat') return;
+    console.log('[MapViewer] Fetching heat layer for year:', year);
     fetchHeatLayer(year)
       .then((data) => {
+        console.log('[MapViewer] Heat layer data received:', data);
         if (data.tileUrl) {
           setTileUrl(data.tileUrl);
         } else {
           setTileUrl(null);
         }
       })
-      .catch(() => setTileUrl(null));
+      .catch((err) => {
+        console.error('[MapViewer] Failed to fetch heat layer:', err);
+        setTileUrl(null);
+      });
   }, [year, activeLayer]);
 
   // Initialize map only once
@@ -283,7 +289,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
       // Fetch location name even in non-thermal mode
       setIsAnalyzing(true);
       try {
-        const analysisRes = await fetch('/api/analyze', {
+        const analysisRes = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lat, lng })
@@ -311,7 +317,7 @@ const MapViewer = ({ mapView, planningTrigger, setPlanningTrigger, onViewChange 
     setIsAnalyzing(true);
     try {
       // Fetch AI consultant analysis and temperature from backend
-      const analysisRes = await fetch('/api/analyze', {
+      const analysisRes = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng })

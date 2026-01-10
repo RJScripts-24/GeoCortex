@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { GoogleMapsOverlay } from '@deck.gl/google-maps';
 import { ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 import { generatePlanningPDF } from '../utils/pdfGenerator';
+import { API_BASE_URL } from '../config/api.js';
 
 const ASSETS = [
   { label: 'Plant', file: 'Plant.glb', icon: '🌱', image: '/Plants.jpg', scale: 10 },
@@ -57,7 +58,7 @@ const PlanningMode = () => {
     const centerLng = (bounds.e + bounds.w) / 2;
 
     try {
-      const res = await fetch('/api/planning/analyze', {
+      const res = await fetch(`${API_BASE_URL}/api/planning/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -255,7 +256,7 @@ const PlanningMode = () => {
       setPollenPopup({ visible: true, status: 'checking', message: 'Checking pollen levels...', safe: true });
 
       try {
-        const res = await fetch('/api/check_pollen', {
+        const res = await fetch(`${API_BASE_URL}/api/check_pollen`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lat, lng })
