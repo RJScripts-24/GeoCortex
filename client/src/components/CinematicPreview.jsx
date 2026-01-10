@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api.js';
 
 const SAMPLE_LOCATIONS = [
     {
@@ -48,7 +49,7 @@ const CinematicPreview = ({ targetAddress, onClose }) => {
         try {
             // Use backend proxy to avoid exposure and handle CORS/Auth
             const response = await axios.get(
-                `/api/aerial_view`,
+                `${API_BASE_URL}/api/aerial_view`,
                 {
                     params: {
                         address: address
@@ -176,8 +177,8 @@ const CinematicPreview = ({ targetAddress, onClose }) => {
                                     <div className="w-full h-24 mb-3 rounded-lg overflow-hidden bg-gray-100 relative shadow-inner">
                                         {/* Abstract Gradient Placeholder for Thumbnail */}
                                         <div className={`absolute inset-0 bg-gradient-to-br ${loc.id === 'google-hq' ? 'from-blue-500 to-cyan-400' :
-                                                loc.id === 'sf-downtown' ? 'from-indigo-500 to-purple-400' :
-                                                    'from-amber-400 to-orange-400'
+                                            loc.id === 'sf-downtown' ? 'from-indigo-500 to-purple-400' :
+                                                'from-amber-400 to-orange-400'
                                             } opacity-90 group-hover/card:opacity-100 transition-opacity`}></div>
                                         <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/20 backdrop-blur-md rounded text-[10px] uppercase font-bold text-white tracking-wider">Demo</div>
                                     </div>
