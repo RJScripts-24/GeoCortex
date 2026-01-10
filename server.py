@@ -37,10 +37,26 @@ CORS(app)  # Enable CORS for all routes - required for Cloud Run + Firebase fron
 
 # Initialize Earth Engine
 try:
-    # Use credentials.json file in the project directory
-    credentials_path = os.path.join(os.path.dirname(__file__), 'credentials.json')
-    with open(credentials_path, 'r') as f:
-        credentials_data = json.load(f)
+    # Check for Cloud Run mounted secret first, then fallback to local file
+    # Cloud Run typically mounts secrets to /secrets/<secret-name> or custom path
+    credentials_paths = [
+        os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),  # Environment variable path
+        '/secrets/earthengine-credentials',  # User's Cloud Run secret mount path
+        '/secrets/credentials.json',  # Common Cloud Run secret mount path
+        '/secrets/credentials/credentials.json',  # Alternative mount path
+        os.path.join(os.path.dirname(__file__), 'credentials.json')  # Local development
+    ]
+    
+    credentials_data = None
+    for cred_path in credentials_paths:
+        if cred_path and os.path.exists(cred_path):
+            print(f"[DEBUG] Found credentials at: {cred_path}")
+            with open(cred_path, 'r') as f:
+                credentials_data = json.load(f)
+            break
+    
+    if not credentials_data:
+        raise FileNotFoundError("No credentials.json found in any expected location")
     
     creds = ee.ServiceAccountCredentials(
         credentials_data['client_email'],
